@@ -1,6 +1,6 @@
 # Prototype setup and safety checks
 
-This experimental source snapshot supports supervised testing on disposable Factorio worlds. It is not a validated public release or installer. No project license has been selected or added; dependency provenance and licensing review remain open.
+This experimental source snapshot supports supervised testing on disposable Factorio worlds. It is not a validated public release or installer. Original AutoEngineer contributions use the [MIT License](../LICENSE). Preserve the backend attribution and other [third-party notices](../THIRD_PARTY_NOTICES.md).
 
 ## Included
 
@@ -72,4 +72,4 @@ The 34 offline tests use fake sessions, temporary configuration and a task-only 
 
 Live checks subsequently passed in a newly generated disposable Factorio 2.0.77 world, with a separate patched backend and independent observer: Stop (7 observed game ticks), controller kill (107), backend kill (103) and backend RCON connection loss (107). Position remained stable for a further 72 game ticks after each observed stop. The fixture used slowed, deterministic five-tile movement rather than model-generated actions. Follow-up actual dashboard Stop and confirmed Close tests also passed during movement, with zero position drift over 120 further game ticks. A Close-dialog/controller-exit race was found and fixed; the window now closes even if its controller exits during confirmation. Pause/resume, stale-owner behavior and manual takeover remain follow-ups. No main save was used, and test processes were shut down afterward. These measurements are single-case observations, not universal real-time guarantees.
 
-Backend startup installs a game chat listener even for observation diagnostics. The existing backend dependency warnings, broader execution-boundary review, dependency provenance, clean installation, and authorship/licensing decisions remain open. Do not use important saves or unattended servers. No licensing change is included.
+Backend startup installs a game chat listener even for observation diagnostics. The existing backend dependency warnings, broader execution-boundary review, dependency provenance, clean installation, and authorship review remain open. Do not use important saves or unattended servers. Third-party components retain their existing licenses.
