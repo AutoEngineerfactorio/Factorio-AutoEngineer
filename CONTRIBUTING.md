@@ -10,4 +10,4 @@ Thank you for helping build a trustworthy Factorio AI companion.
 - For third-party libraries, mods, assets, and code, include license and attribution details.
 - Please include reproducible steps and environment details with bug reports, but remove usernames, paths, and credentials.
 
-A contributor code-of-conduct and formal licensing policy may be added as the project matures.
+Original project contributions use the [MIT License](LICENSE). Preserve third-party license and attribution notices. A contributor code-of-conduct may be added as the project matures.

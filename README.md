@@ -63,6 +63,6 @@ The project website is published at [autoengineerfactorio.github.io/Factorio-Aut
 
 ## Licensing
 
-The project licensing decision is pending review of code ownership and third-party dependencies. Until a license is added, no broad reuse rights are granted for original code in this repository. We will keep dependencies as separately attributed projects.
+Original Factorio-AutoEngineer code and documentation are licensed under the [MIT License](LICENSE). The separately obtained FactorioMCP backend retains its upstream MIT license and attribution; see [third-party notices](THIRD_PARTY_NOTICES.md), including the upstream license text for backend-derived patch material. Other dependencies and assets retain their own licenses.
 
 Factorio is developed by Wube Software. Factorio AutoEngineer is an independent community project and is not affiliated with or endorsed by Wube Software.
