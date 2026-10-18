@@ -13,6 +13,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, scrolledtext, ttk
 from session_safety import PROMPT
+from navigation_objective import Objective
 
 AGENT = Path(__file__).resolve().parent / "supervised_agent.py"
 
@@ -29,6 +30,7 @@ class Dashboard:
         self.stop_confirmed = False
         self.closing = False
         self.latest_proposal = "No action proposed yet."
+        self.objective = tk.StringVar(value=os.environ.get('AUTOENGINEER_OBJECTIVE', ''))
         self.status = tk.StringVar(value="Idle")
         self.position = tk.StringVar(value="Unknown")
         self.cycle = tk.StringVar(value="â€”")
@@ -54,6 +56,10 @@ class Dashboard:
         self.proposal_label = ttk.Label(proposal_box, text=self.latest_proposal, wraplength=960, justify="left")
         self.proposal_label.pack(fill="x")
 
+        objective_box = ttk.Frame(self.root, padding=(18, 0, 18, 10))
+        objective_box.pack(fill='x')
+        ttk.Label(objective_box, text='Objective (optional resource name or x,y):').pack(side='left')
+        ttk.Entry(objective_box, textvariable=self.objective, width=30).pack(side='left', padx=10)
         controls = ttk.Frame(self.root, padding=(18, 0))
         controls.pack(fill="x")
         self.start_button = ttk.Button(controls, text="Start supervised session", command=self.start)
@@ -95,6 +101,17 @@ class Dashboard:
     def start(self):
         if self.closing or self.proc is not None:
             return
+        selected_objective = self.objective.get().strip()
+        if selected_objective:
+            try:
+                Objective(selected_objective)
+            except ValueError as exc:
+                messagebox.showerror('Invalid objective', str(exc))
+                return
+        child_env = dict(os.environ)
+        child_env.pop('AUTOENGINEER_OBJECTIVE', None)
+        if selected_objective:
+            child_env['AUTOENGINEER_OBJECTIVE'] = selected_objective
         if not AGENT.is_file():
             messagebox.showerror("Agent not found", f"Place dashboard next to:\n{AGENT}")
             return
@@ -117,6 +134,7 @@ class Dashboard:
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace", bufsize=0,
                 cwd=str(AGENT.parent), startupinfo=startup,
+                env=child_env,
             )
         except OSError as exc:
             self.status.set("Launch failed")

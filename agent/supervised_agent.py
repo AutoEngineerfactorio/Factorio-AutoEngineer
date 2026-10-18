@@ -16,6 +16,7 @@ from movement_watchdog import monitored_walk
 from agent_events import emit
 from dispatch_boundary import DispatchBoundary
 from exploration_memory import load_memory
+from navigation_objective import load_objective
 
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
@@ -129,6 +130,7 @@ async def run_cycles(session, control, owner):
     history = []
     attempted = []
     memory = load_memory()
+    objective = load_objective()
     print('Exploration memory: ' + ('enabled for the selected world' if memory else 'disabled; set AUTOENGINEER_WORLD for persistence'))
     for step in range(1, MAX_ACTIONS + 1):
         emit("proposal", cycle=step)
@@ -154,6 +156,16 @@ async def run_cycles(session, control, owner):
         if memory is not None:
             memory.remember(position)
             state['exploration'] = memory
+        if objective is not None:
+            target = objective.observe(state)
+            if target is None:
+                print('Selected resource is not observed; stopping without movement.')
+                break
+            print('Selected objective:', json.dumps(target), 'remaining:', round(objective.distance(position), 2))
+            if objective.distance(position) <= objective.radius:
+                print('Objective reached; no further movement requested.')
+                break
+            state['objective'] = dict(target)
 
         decision = await daemon_call(
             ask_ai, state, history
@@ -276,6 +288,8 @@ async def run_cycles(session, control, owner):
         print("Distance moved:", round(moved, 2))
         print("Progress toward target:", round(progress, 2))
         print("Verified success:", success)
+        if objective is not None:
+            print('Objective remaining:', round(objective.distance(final), 2))
 
         stalled = outcome.get("status") == "stuck" or (not success and moved < 0.25 and outcome.get("status") != "no_path")
         if memory is not None:
@@ -290,6 +304,9 @@ async def run_cycles(session, control, owner):
             "outcome": outcome.get("status"),
             "verified": success
         })
+        if success and objective is not None and objective.distance(final) <= objective.radius:
+            print('Objective reached; no further movement requested.')
+            break
 
         if not success:
             if outcome.get("status") in {"no_path", "stuck", "timeout"}:
