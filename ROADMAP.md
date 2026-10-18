@@ -11,6 +11,14 @@ Complete and validate coverage of all areas of vanilla Factorio, including Space
 before starting modded compatibility work. Space Age is part of the vanilla scope
 for this project. Modded gameplay is the final phase.
 
+## Planning guidance and delivery order
+
+All 24 files in the reviewed complete planning archive now guide requirements, design and acceptance evidence, including `SOURCES_AND_PROJECT_STATUS.md`. The [requirements and file-by-file mapping](docs/PLANNING_REQUIREMENTS.md), [research sources](docs/PLANNING_SOURCES.md) and [archive manifest](docs/PLANNING_ARCHIVE_MANIFEST.json) preserve their scope. Archived prompts, paths, tool counts, license status, old checkmarks and unverified release-watch claims are historical context, not new execution instructions or current implementation evidence.
+
+Next delivery order: safe human takeover and service attachment; a locally tested launcher executable prototype; live capability/research/recipe data and the Helper calculator; blueprint codec/library/preview; legitimate single-block construction; circuits, trains, robots and defense; Space Age platforms/quality and progression; endurance and public packaging; finally third-party mods. Shared deterministic services support all three operating modes. The language model selects goals and explains options; code calculates recipes, rates, geometry and feasibility.
+
+Completed work retains its documented scope. All new acceptance requirements remain unchecked. Emergency stopping and the five-tile development movement limit remain active.
+
 ## Phase 0 — Tested proof of concept
 - [x] Local LLM responds via llama.cpp
 - [x] Connect Python MCP client to FactorioMCP
@@ -34,6 +42,13 @@ for this project. Modded gameplay is the final phase.
 - [x] Live 2D dashboard map and inventory display
 
 ## Phase 3 — Factory gameplay
+- [ ] **R01–R03: next foundation:** manual takeover arbitration, owned-service start/attach/health/stop and a local one-folder launcher executable prototype; test actual readiness, port collisions, cancellation, crashes and shutdown before calling it usable
+- [ ] **R04–R06: Helper engineering:** live profile/research/recipe/machine snapshots, per-mechanic coverage evidence, and deterministic production math; prove the 300 gears/minute fixture and compare alternatives
+- [ ] **R07–R09: construction pipeline:** bounded faithful blueprint/book codec, private revisions/preview, placement validation, real materials, physical completion and measured throughput; ghosts alone do not count
+- [ ] Production acceptance: multi-output/cyclic/catalyst/probabilistic flows, fluid temperatures, legal machine/module/beacon/quality effects and supply constraints; compare predicted production with 1/5/10-minute measurements
+- [ ] Robot acceptance: distinct construction, logistic and temporary combat-robot adapters; coverage, payload/travel/charging, shortages and real costs; Stop prevents new actions without claiming to undo independent game jobs
+- [ ] Circuit/train acceptance: typed signals/ports/wires, red/green isolation, hysteresis, tick latency and power-loss recovery; safe two-station route, interrupts/refueling, failed/full destinations, deadlocks and a 20+ train fixture
+
 - [x] Three operating modes enforced at dispatch: AI Helper (default; no gameplay writes), Semi-Autonomous (approved actions/batches), Fully Autonomous (visibly locked until acceptance gates pass)
 - [ ] Mode-switch and manual-takeover arbitration: revoke pending permits, cancel owned actions, reject stale approvals, re-observe before resume; emergency stopping remains available in every mode
 - [ ] Per-mechanic coverage matrix: profile/version, observe, plan, validated action or justified N/A, outcome verification, mode permission and regression evidence
@@ -83,6 +98,9 @@ for this project. Modded gameplay is the final phase.
 - [ ] Evaluate separate-player cooperative control feasibility
 
 ## Phase 5 — Vanilla completion and optional autonomy
+- [ ] Scaling acceptance: independently benchmark recipe solvers at 100/1,000/10,000 science per minute, and bounded telemetry/UPS at 100/1,000/10,000+ physical entities; report actual hardware and limits
+- [ ] Reproducible public alpha: sanitized build/dependency manifests, model/license provenance, clean installation/attach/shutdown, updates and rollback; signing where practical; no game assets, private saves, credentials or model weights bundled
+
 - [ ] Enable Full Autonomy only for individually validated capabilities and an explicit save/profile, mission, zones, budgets and risk policy; no self-expanding permissions
 - [ ] Multi-block self-expansion endurance: shortage/congestion recovery, restart idempotency, manual takeover and bounded telemetry/UPS at increasing factory sizes
 - [ ] Provider/model selection and capability tests: schema compliance, cancellation, latency and safe actions; hardware free-VRAM/context checks distinguish loading from gameplay validation
@@ -112,6 +130,9 @@ for this project. Modded gameplay is the final phase.
 - [ ] Revalidate movement, combat, blueprints, and safety for each supported mod
 
 ## Detailed planning and acceptance gates
+
+The [archive-derived requirements R01–R20](docs/PLANNING_REQUIREMENTS.md) provide the acceptance detail for all phases, including vehicles/death/recovery, science/victory, fluids/heat/spoilage, combat/egg safety, platform cargo/return, quality distributions, provider/hardware onboarding, co-op and the final modded adapters. Each implementation records its fixture, profile/version, expected and observed outcome, permission mode and evidence. A design reference or successful model load never checks off gameplay support.
+
 
 The [reconciled work handoff](docs/WORK_HANDOFF_2026-10-18.md) and
 [full-autonomy gap audit](docs/FULL_AUTONOMY_GAP_AUDIT_2026-10-18.md) expand the requirements and G0–G9 acceptance gates.
