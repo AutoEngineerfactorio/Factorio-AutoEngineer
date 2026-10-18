@@ -45,8 +45,8 @@ for this project. Modded gameplay is the final phase.
 
 - [x] Verified starter mining and crafting operations (bounded basic resources, gears and cable)
 - [ ] Extend verified operations across vanilla and Space Age resources and recipes
-- [ ] Factorio-style dashboard map: terrain, water, resource patches, buildings, enemies, player markers, pan and zoom
-- [ ] Player-style inventory grid: item icons, stack counts and quality indicators; initially read-only
+- [x] Factorio-style dashboard map: terrain, water, resource patches, buildings, enemies, player markers, pan and zoom
+- [x] Player-style inventory grid: item icons, stack counts and quality indicators; initially read-only
 - [ ] Resource-aware factory building and placement checks
 - [ ] Production, power, research, and recovery planning
 - [ ] Enemy detection, threat avoidance, and defensive building
@@ -96,3 +96,5 @@ Their research leads are unverified until checked against primary sources and th
 Space Age remains vanilla scope; Space Exploration is modded and stays in Phase 6.
 G7 (SE) runs only after vanilla/Space Age completion, regardless of its numeric position.
 All new tasks remain unchecked; planning does not establish implementation or test coverage.
+
+Dashboard completion is scoped to the bounded read-only view; see [display validation and limitations](docs/DASHBOARD_MAP_VALIDATION.md). It stays live independently of AI execution.

@@ -78,3 +78,5 @@ The [live dashboard](docs/LIVE_DASHBOARD.md) displays a read-only observed map a
 [Verified starter mining and crafting](docs/VERIFIED_OPERATIONS.md) is available through the dashboard, with batch limits, preflight checks, inventory verification and owned-operation stopping.
 
 Detailed future work: [reconciled handoff](docs/WORK_HANDOFF_2026-10-18.md) and [full-autonomy gap audit](docs/FULL_AUTONOMY_GAP_AUDIT_2026-10-18.md). Research candidates are not verified compatibility claims.
+
+The game-style map and slot inventory stay live whenever the dashboard is open, independently of the AI. Rebuild the current backend patch; see [display setup](docs/LIVE_DASHBOARD.md) and [validation](docs/DASHBOARD_MAP_VALIDATION.md).
