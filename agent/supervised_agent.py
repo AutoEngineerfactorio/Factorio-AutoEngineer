@@ -304,7 +304,7 @@ async def run_cycles(session, control, owner, feed=None, policy=None):
         if objective is not None:
             print('Objective remaining:', round(objective.distance(final), 2))
 
-        stalled = outcome.get("status") == "stuck" or (not success and moved < 0.25 and outcome.get("status") != "no_path")
+        stalled = outcome.get("status") == "stuck" or (not success and moved < 0.25 and outcome.get("status") not in {"no_path", "path_rejected"})
         if memory is not None:
             memory.remember(final)
             if not success:
@@ -324,7 +324,7 @@ async def run_cycles(session, control, owner, feed=None, policy=None):
             break
 
         if not success:
-            if outcome.get("status") in {"no_path", "stuck", "timeout"}:
+            if outcome.get("status") in {"no_path", "stuck", "timeout", "path_rejected"}:
                 # Completed backend route calls clear walking before returning.
                 # Confirm a stationary position before any fresh proposal; a
                 # failed observation, transport error or cancellation ends safely.

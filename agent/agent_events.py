@@ -25,7 +25,7 @@ class EventLog:
             raise ValueError("Unknown event type")
         record = {"schema": 1, "time": datetime.now(timezone.utc).isoformat(), "session": self.session, "event": event}
         for key, value in fields.items():
-            if key == "status" and value in {"arrived", "no_path", "stuck", "timeout", "other"}:
+            if key == "status" and value in {"arrived", "no_path", "stuck", "timeout", "path_rejected", "other"}:
                 record[key] = value
             if key in FIELDS and type(value) in (int, float, bool) and math.isfinite(value):
                 record[key] = value
