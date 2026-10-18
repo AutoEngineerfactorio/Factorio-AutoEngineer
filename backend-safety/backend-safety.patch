@@ -112,7 +112,7 @@
  await builder.Build().RunAsync();
 --- a/FactorioMCP/Services/FactorioService.cs
 +++ b/FactorioMCP/Services/FactorioService.cs
-@@ -54,15 +54,31 @@
+@@ -54,15 +54,77 @@
      /// </summary>
      internal const string LuaOnTickHandler = """
          script.on_event(defines.events.on_tick, function()
@@ -125,6 +125,20 @@
 +                and #game.connected_players == 1 and selected and selected.index == s.player
 +                and p and p.valid and p.character and p.character.valid
 +            if not active then
++                local op=storage.operation
++            if op and not op.status then
++                if op.kind=='craft' and p and p.valid then
++                    local q=p.crafting_queue
++                    local inv=p.get_main_inventory()
++                    local gained=inv and inv.get_item_count{name=op.name,quality='normal'}-op.initial or 0
++                    local units=op.name=='copper-cable' and 2 or 1
++                    local remaining=math.max(0,op.want-math.floor(math.max(0,gained)/units))
++                    if q and q[1] and q[1].recipe==op.name and remaining>0 then
++                        p.cancel_crafting{index=1,count=math.min(q[1].count,remaining)}
++                    end
++                end
++                op.status='stopped'
++            end
 +                if s then s.stopped = true end
 +                if storage.walk_dir ~= nil or storage.mine_state ~= nil then
 +                    if p and p.valid then
@@ -142,7 +156,40 @@
 +            if d ~= nil then
 +                p.walking_state = {walking=true, direction=d}
              end
-             if storage.mine_state then
+-            if storage.mine_state then
++            local op=storage.operation
++            if op and not op.status then
++                local inv=p.get_main_inventory()
++                local function amount(item) return inv and inv.get_item_count{name=item,quality='normal'} or 0 end
++                local gained=amount(op.name)-op.initial
++                local status=nil
++                if p.surface.index~=op.surface or game.tick>=op.deadline then status='timeout'
++                elseif op.kind=='mine' then
++                    local e=op.entity
++                    if gained>=op.expected then
++                        op.resource_after=e and e.valid and e.amount or 0
++                        status=gained==op.expected and op.resource_initial-op.resource_after==op.expected and 'verified' or 'verification_failed'
++                    elseif not e or not e.valid or (p.position.x-e.position.x)^2+(p.position.y-e.position.y)^2>4 then status='target_changed'
++                    else
++                        p.update_selected_entity(e.position)
++                        if p.selected~=e then status='target_obstructed'
++                        else p.mining_state={mining=true,position=e.position} end
++                    end
++                elseif p.crafting_queue_size==0 then
++                    status=gained==op.expected and op.input_initial-amount(op.input)==op.input_expected and 'verified' or 'verification_failed'
++                end
++                if status then
++                    if op.kind=='craft' and p.crafting_queue_size>0 then
++                        local q=p.crafting_queue
++                        local units=op.name=='copper-cable' and 2 or 1
++                        local remaining=math.max(0,op.want-math.floor(math.max(0,gained)/units))
++                        if q and q[1] and q[1].recipe==op.name and remaining>0 then p.cancel_crafting{index=1,count=math.min(q[1].count,remaining)} end
++                    end
++                    op.status=status;op.after=amount(op.name);op.input_after=amount(op.input)
++                    storage.mine_state=nil;p.mining_state={mining=false}
++                end
++            end
++            if storage.mine_state and not storage.mine_state.operation then
                  p.update_selected_entity(storage.mine_state.position)
 -                p.mining_state = {mining = true, position = storage.mine_state.position}
 +                p.mining_state = {mining=true, position=storage.mine_state.position}
@@ -294,7 +341,7 @@
  
 --- /dev/null
 +++ b/FactorioMCP/Tools/AutoEngineerTools.cs
-@@ -0,0 +1,81 @@
+@@ -0,0 +1,92 @@
 +using FactorioMCP.Services;
 +using FactorioMCP.Rcon;
 +using ModelContextProtocol.Server;
@@ -307,6 +354,8 @@
 +{
 +    internal static readonly Dictionary<string, string[]> Allowed = new()
 +    {
++        ["autoengineer_operation_preview"] = ["kind", "name", "count"],
++        ["autoengineer_operation"] = ["kind", "name", "count", "safetyOwner", "targetX", "targetY"],
 +        ["autoengineer_view"] = [], ["autoengineer_policy"] = [], ["get_player_position"] = [],
 +        ["scan_resources"] = ["radius"], ["get_nearby_entities"] = ["radius"],
 +        ["walk_to_position"] = ["targetX", "targetY", "safetyOwner", "tolerance", "timeoutSeconds"],
@@ -314,7 +363,7 @@
 +    };
 +
 +    [McpServerTool(Name = "autoengineer_policy"), Description("Report the restricted AutoEngineer dispatch policy.")]
-+    public string Policy() => "{\"version\":4,\"max_walk\":5,\"restricted\":true}";
++    public string Policy() => "{\"version\":5,\"max_walk\":5,\"restricted\":true}";
 +
 +    [McpServerTool(Name = "autoengineer_view"), Description("Read bounded single-player position and main inventory; no game actions.")]
 +    public Task<string> View(CancellationToken cancellationToken = default) =>
@@ -375,10 +424,19 @@
 +        return queue.ExecuteAsync(nameof(Walk), ct =>
 +            pathfinding.WalkToAsync(targetX, targetY, tolerance, timeoutSeconds, ct, safetyOwner), cancellationToken);
 +    }
++    [McpServerTool(Name = "autoengineer_operation_preview"), Description("Read preconditions for a starter mining or crafting batch of 1..3.")]
++    public Task<string> OperationPreview(string kind, string name, int count = 1, CancellationToken cancellationToken = default) =>
++        queue.ExecuteAsync(nameof(OperationPreview), ct => new OperationService(rcon).Preview(kind,name,count,ct), cancellationToken);
++
++    [McpServerTool(Name = "autoengineer_operation"), Description("Execute an approved bounded starter operation under the owning safety lease.")]
++    public Task<string> Operation(string kind, string name, int count, string safetyOwner,
++        double targetX = 0, double targetY = 0, CancellationToken cancellationToken = default) =>
++        queue.ExecuteAsync(nameof(Operation), ct => new OperationService(rcon).Execute(kind,name,count,safetyOwner,targetX,targetY,ct), cancellationToken);
++
 +}
 --- /dev/null
 +++ b/FactorioMCP/Tools/SafetyTools.cs
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,110 @@
 +using System.ComponentModel;
 +using System.Text.Json;
 +using FactorioMCP.Rcon;
@@ -417,6 +475,7 @@
 +            storage.mine_state = nil
 +            p.walking_state = {walking=false, direction=defines.direction.north}
 +            p.mining_state = {mining=false}
++            storage.operation=nil
 +            storage.autoengineer_safety = {owner={{id}}, player=p.index, deadline=game.tick+120, stopped=false}
 +            rcon.print('{"version":1,"status":"active"}')
 +            """, cancellationToken);
@@ -450,6 +509,20 @@
 +            storage.walk_dir = nil
 +            storage.mine_state = nil
 +            local p = game.get_player(s.player)
++            local op=storage.operation
++            if op and not op.status then
++                if op.kind=='craft' and p and p.valid then
++                    local q=p.crafting_queue
++                    local inv=p.get_main_inventory()
++                    local gained=inv and inv.get_item_count{name=op.name,quality='normal'}-op.initial or 0
++                    local units=op.name=='copper-cable' and 2 or 1
++                    local remaining=math.max(0,op.want-math.floor(math.max(0,gained)/units))
++                    if q and q[1] and q[1].recipe==op.name and remaining>0 then
++                        p.cancel_crafting{index=1,count=math.min(q[1].count,remaining)}
++                    end
++                end
++                op.status='stopped'
++            end
 +            if p and p.valid then
 +                p.walking_state = {walking=false, direction=defines.direction.north}
 +                p.mining_state = {mining=false}
@@ -864,5 +937,120 @@
 +            lastX = x; lastY = y;
 +        }
 +        return Dist(lastX, lastY, targetX, targetY) <= tolerance;
++    }
++}
+--- /dev/null
++++ b/FactorioMCP/Services/OperationService.cs
+@@ -0,0 +1,112 @@
++using System.Globalization;
++using System.Text.Json;
++using FactorioMCP.Rcon;
++
++namespace FactorioMCP.Services;
++
++// Starter operations only. No building/entity mining, recursive crafting or arbitrary Lua.
++internal sealed class OperationService(RconClient rcon)
++{
++    internal static void Validate(string kind, string name, int count)
++    {
++        if (count < 1 || count > 3 ||
++            !(kind == "mine" && new[] { "iron-ore", "copper-ore", "coal", "stone" }.Contains(name) ||
++              kind == "craft" && new[] { "iron-gear-wheel", "copper-cable" }.Contains(name)))
++            throw new ArgumentException("Operation outside starter allowlist or count 1..3");
++    }
++
++    private string Prelude(string kind, string name, int count) => $$"""
++        local kind,name,want = {{JsonSerializer.Serialize(kind)}},{{JsonSerializer.Serialize(name)}},{{count}}
++        local p=game.connected_players[1]
++        local function reply(status,extra)
++            local out=extra or {}; out.status=status; rcon.print(helpers.table_to_json(out))
++        end
++        if #game.connected_players~=1 or not p or not p.character then reply('single_player_required') return end
++        local inv=p.get_main_inventory()
++        if not inv then reply('no_inventory') return end
++        local function amount(item) return inv.get_item_count{name=item,quality='normal'} end
++        local input=kind=='craft' and (name=='iron-gear-wheel' and 'iron-plate' or 'copper-plate') or name
++        local units=name=='iron-gear-wheel' and 2 or 1
++        local output_units=name=='copper-cable' and 2 or 1
++        """;
++
++    public Task<string> Preview(string kind, string name, int count, CancellationToken ct)
++    {
++        Validate(kind, name, count);
++        return rcon.ExecuteLuaAsync(Prelude(kind,name,count) + """
++            if p.walking_state.walking or p.mining_state.mining or p.crafting_queue_size>0 then reply('busy') return end
++            if not inv.can_insert{name=name,count=want*output_units,quality='normal'} then reply('inventory_full') return end
++            if kind=='craft' then
++                local recipe=p.force.recipes[name]
++                if not recipe or not recipe.enabled then reply('recipe_unavailable') return end
++                if amount(input)<want*units then reply('missing_materials') return end
++                if p.get_craftable_count(name)<want then reply('not_handcraftable') return end
++                reply('ready',{kind=kind,name=name,count=want,product_before=amount(name),input_before=amount(input),expected=want*output_units,x=p.position.x,y=p.position.y})
++            else
++                local nearest=nil;local distance=math.huge
++                for _,e in pairs(p.surface.find_entities_filtered{position=p.position,radius=2,type='resource',name=name,limit=128}) do
++                    local d=(e.position.x-p.position.x)^2+(e.position.y-p.position.y)^2
++                    if e.valid and e.minable and e.amount>=want and d<distance then nearest=e;distance=d end
++                end
++                if not nearest then reply('no_nearby_resource') return end
++                reply('ready',{kind=kind,name=name,count=want,product_before=amount(name),expected=want,targetX=nearest.position.x,targetY=nearest.position.y,x=p.position.x,y=p.position.y})
++            end
++            """, ct);
++    }
++
++    public async Task<string> Execute(string kind, string name, int count, string owner, double x, double y, CancellationToken ct)
++    {
++        Validate(kind,name,count);
++        if (!Guid.TryParseExact(owner,"N",out _) || !double.IsFinite(x) || !double.IsFinite(y))
++            throw new ArgumentException("Invalid owner or target");
++        var begin = await rcon.ExecuteLuaAsync(Prelude(kind,name,count) + string.Create(CultureInfo.InvariantCulture,$$"""
++            local s=storage.autoengineer_safety
++            if not s or s.owner~={{JsonSerializer.Serialize(owner)}} or s.stopped or game.tick>=s.deadline or s.player~=p.index then reply('not_owner') return end
++            if p.walking_state.walking or p.mining_state.mining or p.crafting_queue_size>0 or storage.operation then reply('busy') return end
++            if not inv.can_insert{name=name,count=want*output_units,quality='normal'} then reply('inventory_full') return end
++            local op={owner=s.owner,kind=kind,name=name,want=want,initial=amount(name),input=input,input_initial=amount(input),expected=want*output_units,deadline=game.tick+600,player=p.index,surface=p.surface.index}
++            if kind=='craft' then
++                local recipe=p.force.recipes[name]
++                if not recipe or not recipe.enabled then reply('recipe_unavailable') return end
++                if amount(input)<want*units then reply('missing_materials') return end
++                if p.get_craftable_count(name)<want then reply('not_handcraftable') return end
++                op.input_expected=want*units
++                storage.operation=op
++                local queued=p.begin_crafting{recipe=name,count=want,silent=true}
++                op.queued=queued
++                if queued~=want then if queued>0 then p.cancel_crafting{index=1,count=queued} end;storage.operation=nil;reply('queue_rejected') return end
++            else
++                local tx,ty={{x}},{{y}}
++                if (tx-p.position.x)^2+(ty-p.position.y)^2>4 then reply('out_of_range') return end
++                local e=p.surface.find_entities_filtered{position={tx,ty},radius=0.01,type='resource',name=name,limit=1}[1]
++                if not e or not e.valid or not e.minable or e.amount<want then reply('target_changed') return end
++                p.update_selected_entity(e.position)
++                if p.selected~=e then reply('target_obstructed') return end
++                op.entity=e;op.resource_initial=e.amount
++                storage.operation=op
++                storage.mine_state={position=e.position,operation=true}
++            end
++            reply('started')
++            """),ct);
++        using(var doc=JsonDocument.Parse(begin))
++            if(doc.RootElement.GetProperty("status").GetString()!="started") return begin;
++        // The guarded on_tick handler completes or stops the operation independently
++        // of this process. Cancellation does not leave an unbounded mining loop.
++        for(int i=0;i<100;i++)
++        {
++            await Task.Delay(100,ct);
++            var state=await rcon.ExecuteLuaAsync($$"""
++                local op=storage.operation
++                if op and op.owner~={{JsonSerializer.Serialize(owner)}} then rcon.print('{"status":"not_owner"}') return end
++                rcon.print(helpers.table_to_json(op and {status=op.status or 'running',before=op.initial,after=op.after,input_before=op.input_initial,input_after=op.input_after,expected=op.expected,resource_before=op.resource_initial,resource_after=op.resource_after} or {status='stopped'}))
++                """,ct);
++            using var result=JsonDocument.Parse(state);
++            if(result.RootElement.GetProperty("status").GetString()!="running")
++            {
++                await rcon.ExecuteLuaAsync($"if storage.operation and storage.operation.owner=={JsonSerializer.Serialize(owner)} then storage.operation=nil end; rcon.print('ok')",ct);
++                return state;
++            }
++        }
++        throw new TimeoutException("Operation observation timed out; safety cleanup required");
 +    }
 +}

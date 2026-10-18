@@ -10,6 +10,8 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
 {
     internal static readonly Dictionary<string, string[]> Allowed = new()
     {
+        ["autoengineer_operation_preview"] = ["kind", "name", "count"],
+        ["autoengineer_operation"] = ["kind", "name", "count", "safetyOwner", "targetX", "targetY"],
         ["autoengineer_view"] = [], ["autoengineer_policy"] = [], ["get_player_position"] = [],
         ["scan_resources"] = ["radius"], ["get_nearby_entities"] = ["radius"],
         ["walk_to_position"] = ["targetX", "targetY", "safetyOwner", "tolerance", "timeoutSeconds"],
@@ -17,7 +19,7 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
     };
 
     [McpServerTool(Name = "autoengineer_policy"), Description("Report the restricted AutoEngineer dispatch policy.")]
-    public string Policy() => "{\"version\":4,\"max_walk\":5,\"restricted\":true}";
+    public string Policy() => "{\"version\":5,\"max_walk\":5,\"restricted\":true}";
 
     [McpServerTool(Name = "autoengineer_view"), Description("Read bounded single-player position and main inventory; no game actions.")]
     public Task<string> View(CancellationToken cancellationToken = default) =>
@@ -78,4 +80,13 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
         return queue.ExecuteAsync(nameof(Walk), ct =>
             pathfinding.WalkToAsync(targetX, targetY, tolerance, timeoutSeconds, ct, safetyOwner), cancellationToken);
     }
+    [McpServerTool(Name = "autoengineer_operation_preview"), Description("Read preconditions for a starter mining or crafting batch of 1..3.")]
+    public Task<string> OperationPreview(string kind, string name, int count = 1, CancellationToken cancellationToken = default) =>
+        queue.ExecuteAsync(nameof(OperationPreview), ct => new OperationService(rcon).Preview(kind,name,count,ct), cancellationToken);
+
+    [McpServerTool(Name = "autoengineer_operation"), Description("Execute an approved bounded starter operation under the owning safety lease.")]
+    public Task<string> Operation(string kind, string name, int count, string safetyOwner,
+        double targetX = 0, double targetY = 0, CancellationToken cancellationToken = default) =>
+        queue.ExecuteAsync(nameof(Operation), ct => new OperationService(rcon).Execute(kind,name,count,safetyOwner,targetX,targetY,ct), cancellationToken);
+
 }

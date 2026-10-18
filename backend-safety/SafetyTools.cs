@@ -36,6 +36,7 @@ internal sealed class SafetyTools(RconClient rcon)
             storage.mine_state = nil
             p.walking_state = {walking=false, direction=defines.direction.north}
             p.mining_state = {mining=false}
+            storage.operation=nil
             storage.autoengineer_safety = {owner={{id}}, player=p.index, deadline=game.tick+120, stopped=false}
             rcon.print('{"version":1,"status":"active"}')
             """, cancellationToken);
@@ -69,6 +70,20 @@ internal sealed class SafetyTools(RconClient rcon)
             storage.walk_dir = nil
             storage.mine_state = nil
             local p = game.get_player(s.player)
+            local op=storage.operation
+            if op and not op.status then
+                if op.kind=='craft' and p and p.valid then
+                    local q=p.crafting_queue
+                    local inv=p.get_main_inventory()
+                    local gained=inv and inv.get_item_count{name=op.name,quality='normal'}-op.initial or 0
+                    local units=op.name=='copper-cable' and 2 or 1
+                    local remaining=math.max(0,op.want-math.floor(math.max(0,gained)/units))
+                    if q and q[1] and q[1].recipe==op.name and remaining>0 then
+                        p.cancel_crafting{index=1,count=math.min(q[1].count,remaining)}
+                    end
+                end
+                op.status='stopped'
+            end
             if p and p.valid then
                 p.walking_state = {walking=false, direction=defines.direction.north}
                 p.mining_state = {mining=false}
