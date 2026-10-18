@@ -18,6 +18,7 @@ from dispatch_boundary import DispatchBoundary
 from exploration_memory import load_memory
 from navigation_objective import load_objective
 from resource_discovery import ResourceDiscovery
+from dashboard_feed import DashboardFeed
 
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
@@ -125,7 +126,7 @@ def validate(decision, position):
     }
 
 
-async def run_cycles(session, control, owner):
+async def run_cycles(session, control, owner, feed=None):
     if not isinstance(session, DispatchBoundary):
         session = DispatchBoundary(session, control)
     history = []
@@ -171,10 +172,14 @@ async def run_cycles(session, control, owner):
                 print('Objective reached; no further movement requested.')
                 break
             state['objective'] = dict(target)
+        if feed is not None:
+            feed.update(resources, memory, state.get('objective'))
 
         decision = await daemon_call(
             ask_ai, state, history
         )
+        if feed is not None:
+            feed.update(resources, memory, state.get('objective'), decision)
 
         print("\nQwen proposes:")
         print(json.dumps(decision, indent=2))
@@ -301,6 +306,8 @@ async def run_cycles(session, control, owner):
             memory.remember(final)
             if not success:
                 memory.remember(decision, failed=True)
+        if feed is not None:
+            feed.update(resources, memory, state.get('objective'))
         emit("movement_arrived" if success else "movement_stalled" if stalled else "movement_failed",
              cycle=step, moved=moved, remaining=remaining, progress=progress, elapsed=time.monotonic()-began,
              status=outcome.get("status") if outcome.get("status") in {"arrived", "no_path", "stuck", "timeout"} else "other")
@@ -353,8 +360,10 @@ async def main():
                 emit("policy_verified")
                 try:
                     safety = SafetySession(session, control)
+                    feed = DashboardFeed()
                     await safety.run(
-                        lambda: run_cycles(session, control, safety.owner)
+                        lambda: feed.run(session, control,
+                            lambda: run_cycles(session, control, safety.owner, feed))
                     )
                 except StopRequested:
                     print("Stopped by user or closed input.", flush=True)

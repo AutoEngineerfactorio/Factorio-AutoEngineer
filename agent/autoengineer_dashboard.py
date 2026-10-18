@@ -14,6 +14,8 @@ from pathlib import Path
 from tkinter import messagebox, scrolledtext, ttk
 from session_safety import PROMPT
 from navigation_objective import Objective
+from dashboard_feed import PREFIX, parse_frame
+from dashboard_view import LiveView
 
 AGENT = Path(__file__).resolve().parent / "supervised_agent.py"
 
@@ -21,8 +23,8 @@ class Dashboard:
     def __init__(self, root):
         self.root = root
         root.title("Factorio AutoEngineer | Supervised Control")
-        root.geometry("1050x720")
-        root.minsize(760, 540)
+        root.geometry("1200x820")
+        root.minsize(1050, 720)
         self.proc = None
         self.q = queue.Queue()
         self.waiting_for_approval = False
@@ -33,8 +35,8 @@ class Dashboard:
         self.objective = tk.StringVar(value=os.environ.get('AUTOENGINEER_OBJECTIVE', ''))
         self.status = tk.StringVar(value="Idle")
         self.position = tk.StringVar(value="Unknown")
-        self.cycle = tk.StringVar(value="â€”")
-        self.verification = tk.StringVar(value="â€”")
+        self.cycle = tk.StringVar(value="-")
+        self.verification = tk.StringVar(value="-")
         self.build_ui()
         self.root.after(80, self.process_events)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -43,7 +45,7 @@ class Dashboard:
         header = ttk.Frame(self.root, padding=(18, 15))
         header.pack(fill="x")
         ttk.Label(header, text="FACTORIO AUTOENGINEER", font=("Segoe UI", 18, "bold")).pack(anchor="w")
-        ttk.Label(header, text="Supervised agent â€¢ manual approval required for every movement").pack(anchor="w", pady=(3, 0))
+        ttk.Label(header, text="Supervised agent - manual approval required for every movement").pack(anchor="w", pady=(3, 0))
         stats = ttk.Frame(self.root, padding=(18, 4))
         stats.pack(fill="x")
         for title, var in (("STATUS", self.status), ("CYCLE", self.cycle), ("PLAYER POSITION", self.position), ("LAST VERIFICATION", self.verification)):
@@ -71,8 +73,12 @@ class Dashboard:
         self.stop_button = ttk.Button(controls, text="Stop session", command=self.stop, state="disabled")
         self.stop_button.pack(side="left")
 
-        ttk.Label(self.root, text="Live agent activity", font=("Segoe UI", 11, "bold"), padding=(18, 12, 0, 3)).pack(anchor="w")
-        self.log = scrolledtext.ScrolledText(self.root, state="disabled", font=("Consolas", 10), wrap="word")
+        tabs = ttk.Notebook(self.root)
+        tabs.pack(fill='both', expand=True, padx=18, pady=10)
+        self.live_view = LiveView(tabs)
+        tabs.add(self.live_view, text='Live map and inventory')
+        activity = ttk.Frame(tabs); tabs.add(activity, text='Agent activity')
+        self.log = scrolledtext.ScrolledText(activity, state="disabled", font=("Consolas", 10), wrap="word")
         self.log.pack(fill="both", expand=True, padx=18, pady=(0, 12))
         footer = ttk.Frame(self.root, padding=(18, 0, 18, 12))
         footer.pack(fill="x")
@@ -119,10 +125,11 @@ class Dashboard:
         self.stop_confirmed = False
         self.set_approval(False)
         self.status.set("Starting")
-        self.cycle.set("â€”")
-        self.verification.set("â€”")
+        self.cycle.set("-")
+        self.verification.set("-")
         self.position.set("Unknown")
-        self.proposal_label.configure(text="Waiting for Qwen's next proposalâ€¦")
+        self.live_view.reset()
+        self.proposal_label.configure(text="Waiting for Qwen's next proposal...")
         self.append("\n========= New supervised session =========\n")
         try:
             startup = subprocess.STARTUPINFO() if os.name == "nt" else None
@@ -162,7 +169,7 @@ class Dashboard:
                 elif ch == "\n":
                     self.q.put((proc, "line", buffer))
                     buffer = ""
-                elif len(buffer) > 16000:
+                elif len(buffer) > 65536:
                     self.q.put((proc, "line", buffer))
                     buffer = ""
             if buffer:
@@ -180,6 +187,15 @@ class Dashboard:
                 if proc is not self.proc:
                     continue
                 if kind == "line":
+                    if value.startswith(PREFIX):
+                        try:
+                            frame = parse_frame(value)
+                            self.live_view.update_frame(frame)
+                            if frame['status'] == 'ok':
+                                self.position.set(f"{frame['position']['x']:.2f}, {frame['position']['y']:.2f}")
+                        except (ValueError, TypeError, KeyError, AttributeError):
+                            self.live_view.update_frame({'status': 'unavailable'})
+                        continue
                     if value.strip() == "SAFETY_STOP_CONFIRMED":
                         self.stop_confirmed = True
                     self.append(value)
@@ -202,6 +218,8 @@ class Dashboard:
                         return
         except queue.Empty:
             pass
+        if hasattr(self, 'live_view'):
+            self.live_view.freshness(self.proc is not None)
         self.root.after(80, self.process_events)
 
     def inspect_line(self, line):
@@ -212,10 +230,10 @@ class Dashboard:
             self.cycle.set(match.group(1))
             self.status.set("Planning")
         if "Qwen proposes:" in line:
-            self.proposal_label.configure(text="Reading model proposalâ€¦")
+            self.proposal_label.configure(text="Reading model proposal...")
         if '"action":' in line or '"reason":' in line or '"targetX":' in line or '"targetY":' in line:
             current = self.proposal_label.cget("text")
-            if current == "Reading model proposalâ€¦":
+            if current == "Reading model proposal...":
                 current = ""
             self.proposal_label.configure(text=(current + line.strip() + "  ")[-900:])
         match = re.search(r"Final position:\s*(.+)", line)

@@ -5,7 +5,7 @@ import math
 from types import MappingProxyType
 
 ALLOWED = {
-    "autoengineer_policy": set(), "get_player_position": set(),
+    "autoengineer_view": set(), "autoengineer_policy": set(), "get_player_position": set(),
     "scan_resources": {"radius"}, "get_nearby_entities": {"radius"},
     "walk_to_position": {"targetX", "targetY", "safetyOwner", "tolerance", "timeoutSeconds"},
     "autoengineer_status": {"owner"},
@@ -31,7 +31,7 @@ class DispatchBoundary:
         for item in response.content:
             if item.type == 'text':
                 data = json.loads(item.text)
-        if response.is_error or data != {"version": 3, "max_walk": 5, "restricted": True}:
+        if response.is_error or data != {"version": 4, "max_walk": 5, "restricted": True}:
             raise RuntimeError("Restricted backend policy mismatch")
 
     def approve(self, arguments, answer):
