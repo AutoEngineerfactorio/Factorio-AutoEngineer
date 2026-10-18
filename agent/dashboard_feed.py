@@ -2,6 +2,7 @@
 import asyncio
 import json
 import math
+import re
 import time
 
 PREFIX = '@AUTOENGINEER_VIEW '
@@ -34,7 +35,69 @@ def snapshot(raw):
     for key in ('inventory_available', 'truncated'):
         if type(raw.get(key)) is not bool: raise ValueError('Invalid inventory state')
         data[key] = raw[key]
+    data.update(display_details(raw))
     return data
+
+
+def bounded_list(value, maximum):
+    if value == {}: value = []
+    if not isinstance(value, list) or len(value) > maximum: raise ValueError('Display collection exceeds bound')
+    return value
+
+
+def label(value):
+    if not isinstance(value, str) or not 1 <= len(value) <= 128 or any(ord(c)<32 for c in value):
+        raise ValueError('Invalid display name')
+    return value
+
+
+def display_details(raw):
+    # Old backends remain usable, with an explicit unavailable terrain/slot layer.
+    if 'terrain' not in raw: return {}
+    t = raw['terrain']
+    if not isinstance(t, dict) or t.get('step') not in (1,2,4) or type(t.get('step')) is not int or type(t.get('partial')) is not bool:
+        raise ValueError('Invalid terrain frame')
+    origin = point(t.get('origin'))
+    def cell(v):
+        p = point(v)
+        if not all(origin[k] <= p[k] < origin[k]+(256 if t['step'] in (1,4) else 64) for k in ('x','y')):
+            raise ValueError('Map data outside observed window')
+        return dict(p, name=label(v.get('name')))
+    raster={}
+    if t['step']==1:
+        rows=bounded_list(t.get('rows'),256)
+        palette=bounded_list(t.get('palette'),256)
+        if len(rows)!=256 or not palette or any(not isinstance(c,str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',c) for c in palette):
+            raise ValueError('Invalid map raster')
+        for row in rows:
+            if not isinstance(row,str) or len(row)!=512 or not re.fullmatch('[0-9a-fA-F]{512}',row) or any(i>=len(palette) for i in bytes.fromhex(row)):
+                raise ValueError('Invalid map row')
+        raster=dict(rows=rows,palette=palette)
+    tiles = []
+    for v in bounded_list(t.get('tiles',[]),4096 if t['step']==4 else 1024):
+        tile=cell(v)
+        if 'color' in v:
+            if not isinstance(v['color'],str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',v['color']) or type(v.get('visible')) is not bool:
+                raise ValueError('Invalid terrain color or visibility')
+            tile.update(color=v['color'],visible=v['visible'])
+        tiles.append(tile)
+    entities = []
+    for v in bounded_list(t.get('entities'),2944):
+        e = cell(v)
+        if v.get('kind') not in ('resource','nature','building','enemy'): raise ValueError('Invalid entity layer')
+        entities.append(dict(e,kind=v['kind']))
+    capacity = raw.get('capacity')
+    if type(capacity) is not int or not 0 <= capacity <= 2000 or type(raw.get('slots_truncated')) is not bool:
+        raise ValueError('Invalid inventory capacity')
+    slots=[];seen=set()
+    for v in bounded_list(raw.get('slots'),200):
+        i=v.get('slot')
+        if type(i) is not int or not 1 <= i <= min(capacity,200) or i in seen: raise ValueError('Invalid inventory slot')
+        seen.add(i)
+        if type(v.get('count')) is not int or not 1 <= v['count'] <= 10**12: raise ValueError('Invalid stack count')
+        slots.append(dict(slot=i,name=label(v.get('name')),quality=label(v.get('quality')),count=v['count']))
+    return dict(terrain=dict(origin=origin,step=t['step'],tiles=tiles,entities=entities,partial=t['partial'],**raster),
+                slots=slots,capacity=capacity,slots_truncated=raw['slots_truncated'])
 
 
 class DashboardFeed:
@@ -86,7 +149,7 @@ class DashboardFeed:
 
 def parse_frame(line):
     if not line.startswith(PREFIX): return None
-    if len(line) > 65536: raise ValueError('Display frame too large')
+    if len(line) > 1048576: raise ValueError('Display frame too large')
     data = json.loads(line[len(PREFIX):])
     if not isinstance(data, dict) or data.get('schema') != 1: raise ValueError('Invalid display frame')
     if data.get('status') == 'unavailable': return {'status': 'unavailable'}

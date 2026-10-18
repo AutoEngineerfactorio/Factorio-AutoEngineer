@@ -28,6 +28,7 @@ class Dashboard:
         root.geometry("1200x820")
         root.minsize(1050, 720)
         self.proc = None
+        self.observer = None
         self.q = queue.Queue()
         self.waiting_for_approval = False
         self.stop_requested = False
@@ -44,13 +45,14 @@ class Dashboard:
         self.verification = tk.StringVar(value="-")
         self.build_ui()
         self.root.after(80, self.process_events)
+        self.root.after(100, self.start_observer)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def build_ui(self):
         header = ttk.Frame(self.root, padding=(18, 15))
         header.pack(fill="x")
         ttk.Label(header, text="FACTORIO AUTOENGINEER", font=("Segoe UI", 18, "bold")).pack(anchor="w")
-        ttk.Label(header, text="Supervised agent - manual approval required for every movement").pack(anchor="w", pady=(3, 0))
+        ttk.Label(header, text="Supervised agent - approval required for every action").pack(anchor="w", pady=(3, 0))
         stats = ttk.Frame(self.root, padding=(18, 4))
         stats.pack(fill="x")
         for title, var in (("STATUS", self.status), ("CYCLE", self.cycle), ("PLAYER POSITION", self.position), ("LAST VERIFICATION", self.verification)):
@@ -97,6 +99,54 @@ class Dashboard:
         footer.pack(fill="x")
         ttk.Label(footer, text="Actions require approval. Stop clears movement, mining and unfinished agent-owned crafts.").pack(side="left")
         ttk.Button(footer, text="Clear log", command=self.clear_log).pack(side="right")
+
+    def display_frame(self, value):
+        try:
+            frame=parse_frame(value)
+            if frame['status']=='ok':
+                if self.live_view.last and self.live_view.last['surface']!=frame['surface']:
+                    self.display_markers={}
+                frame.update(getattr(self,'display_markers',{}))
+                self.position.set(f"{frame['position']['x']:.2f}, {frame['position']['y']:.2f}")
+            self.live_view.update_frame(frame)
+        except (ValueError,TypeError,KeyError,AttributeError):
+            self.live_view.update_frame({'status':'unavailable'})
+
+    def start_observer(self):
+        if self.closing or self.observer is not None:return
+        startup=subprocess.STARTUPINFO() if os.name=='nt' else None
+        if startup:
+            startup.dwFlags|=subprocess.STARTF_USESHOWWINDOW
+            startup.wShowWindow=subprocess.SW_HIDE
+        try:
+            self.observer=subprocess.Popen([sys.executable,'-u',str(AGENT.with_name('dashboard_observer.py'))],
+                stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,
+                text=True,encoding='utf-8',errors='replace',cwd=str(AGENT.parent),startupinfo=startup)
+            threading.Thread(target=self.read_output,args=(self.observer,),daemon=True).start()
+        except OSError:
+            self.live_view.update_frame({'status':'unavailable'})
+            self.root.after(3000,self.start_observer)
+
+    def close_display(self):
+        self.closing=True
+        p=self.observer
+        if p and p.poll() is None:
+            try:p.stdin.write('q\n');p.stdin.flush()
+            except (OSError,ValueError):pass
+            # Observer owns no gameplay; give its MCP transport time to close.
+            self.root.after(100,lambda:self.finish_display_close(p,0))
+        else:self.root.destroy()
+
+    def finish_display_close(self,p,attempt):
+        if p.poll() is not None:
+            self.root.destroy();return
+        if attempt>=70:
+            if os.name=='nt':
+                subprocess.Popen(['taskkill','/PID',str(p.pid),'/T','/F'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NO_WINDOW)
+            else:p.terminate()
+            self.root.destroy();return
+        self.root.after(100,lambda:self.finish_display_close(p,attempt+1))
 
     def append(self, txt):
         self.log.configure(state="normal")
@@ -149,8 +199,8 @@ class Dashboard:
         self.cycle.set("-")
         self.verification.set("-")
         self.position.set("Unknown")
-        self.live_view.reset()
-        self.proposal_label.configure(text="Waiting for Qwen's next proposal...")
+        # Live observation continues independently of AI session lifecycle.
+        self.proposal_label.configure(text="Waiting for an action proposal...")
         self.append("\n========= New supervised session =========\n")
         try:
             startup = subprocess.STARTUPINFO() if os.name == "nt" else None
@@ -190,7 +240,7 @@ class Dashboard:
                 elif ch == "\n":
                     self.q.put((proc, "line", buffer))
                     buffer = ""
-                elif len(buffer) > 65536:
+                elif len(buffer) > 1048576:
                     self.q.put((proc, "line", buffer))
                     buffer = ""
             if buffer:
@@ -205,17 +255,24 @@ class Dashboard:
         try:
             for _ in range(300):
                 proc, kind, value = self.q.get_nowait()
+                if proc is self.observer:
+                    if kind == 'line' and value.startswith(PREFIX):
+                        self.display_frame(value)
+                    elif kind == 'exit':
+                        self.observer = None
+                        self.live_view.update_frame({'status':'unavailable'})
+                        if not self.closing:self.root.after(3000,self.start_observer)
+                    continue
                 if proc is not self.proc:
                     continue
                 if kind == "line":
                     if value.startswith(PREFIX):
+                        # Agent frames add objective/proposal markers; observer owns live world data.
                         try:
-                            frame = parse_frame(value)
-                            self.live_view.update_frame(frame)
-                            if frame['status'] == 'ok':
-                                self.position.set(f"{frame['position']['x']:.2f}, {frame['position']['y']:.2f}")
-                        except (ValueError, TypeError, KeyError, AttributeError):
-                            self.live_view.update_frame({'status': 'unavailable'})
+                            f=parse_frame(value)
+                            if f.get('status')=='ok':
+                                self.display_markers={k:f[k] for k in ('visited','failed','resources','objective','proposal')}
+                        except (ValueError,TypeError,KeyError):pass
                         continue
                     if value.strip() == "SAFETY_STOP_CONFIRMED":
                         self.stop_confirmed = True
@@ -235,12 +292,12 @@ class Dashboard:
                     self.append(f"\n[Agent process exited with code {value}]\n")
                     self.proc = None
                     if self.closing:
-                        self.root.destroy()
+                        self.close_display()
                         return
         except queue.Empty:
             pass
         if hasattr(self, 'live_view'):
-            self.live_view.freshness(self.proc is not None)
+            self.live_view.freshness(self.observer is not None)
         self.root.after(80, self.process_events)
 
     def inspect_line(self, line):
@@ -328,11 +385,11 @@ class Dashboard:
             # have exited (and its exit event been consumed) while it was open.
             # In that case there will be no later event to close the window.
             if self.proc is None or self.proc.poll() is not None:
-                self.root.destroy()
+                self.close_display()
                 return
             self.stop()
             return
-        self.root.destroy()
+        self.close_display()
 
 if __name__ == "__main__":
     app = tk.Tk()
