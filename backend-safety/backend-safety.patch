@@ -1,5 +1,3 @@
-diff --git a/FactorioMCP/FactorioMCP.csproj b/FactorioMCP/FactorioMCP.csproj
-index c2ec113..b6f4514 100644
 --- a/FactorioMCP/FactorioMCP.csproj
 +++ b/FactorioMCP/FactorioMCP.csproj
 @@ -5,12 +5,13 @@
@@ -28,8 +26,6 @@ index c2ec113..b6f4514 100644
 +    <Compile Remove="Services/VisionService.cs" />
 +  </ItemGroup>
  </Project>
-diff --git a/FactorioMCP/Program.cs b/FactorioMCP/Program.cs
-index 1f0710d..9e117dd 100644
 --- a/FactorioMCP/Program.cs
 +++ b/FactorioMCP/Program.cs
 @@ -1,68 +1,28 @@
@@ -114,11 +110,9 @@ index 1f0710d..9e117dd 100644
      });
 -
  await builder.Build().RunAsync();
-diff --git a/FactorioMCP/Services/FactorioService.cs b/FactorioMCP/Services/FactorioService.cs
-index 00752b9..7fbcc20 100644
 --- a/FactorioMCP/Services/FactorioService.cs
 +++ b/FactorioMCP/Services/FactorioService.cs
-@@ -54,15 +54,31 @@ internal sealed partial class FactorioService(RconClient rcon)
+@@ -54,15 +54,31 @@
      /// </summary>
      internal const string LuaOnTickHandler = """
          script.on_event(defines.events.on_tick, function()
@@ -155,18 +149,17 @@ index 00752b9..7fbcc20 100644
              end
          end)
          """;
-diff --git a/FactorioMCP/Services/PathfindingService.cs b/FactorioMCP/Services/PathfindingService.cs
-index 2968058..711c024 100644
 --- a/FactorioMCP/Services/PathfindingService.cs
 +++ b/FactorioMCP/Services/PathfindingService.cs
-@@ -38,14 +38,37 @@ internal sealed class PathfindingService(RconClient rcon)
+@@ -38,13 +38,36 @@
          double targetX, double targetY,
          double tolerance,
          double timeoutSeconds,
 -        CancellationToken cancellationToken = default)
+-    {
 +        CancellationToken cancellationToken = default,
 +        string? expectedOwner = null)
-     {
++    {
 +        // Capture the owning lease before requesting any path. An old walk may
 +        // never borrow a later session's lease after cancellation or reconnect.
 +        var safetyJson = await rcon.ExecuteLuaAsync("""
@@ -191,14 +184,24 @@ index 2968058..711c024 100644
          // Check if already at target
          var (px, py) = await GetPositionAsync(cancellationToken);
          var dist = Distance(px, py, targetX, targetY);
- 
++
 +        if (!double.IsFinite(dist) || dist < 0.5 || dist > 5.0)
 +            throw new ArgumentException("Five-tile movement boundary rejected target");
-+
+ 
          if (dist <= tolerance)
              return FormatResult("arrived", px, py, targetX, targetY, dist, tolerance);
+@@ -85,11 +108,18 @@
+         if (waypoints is null || waypoints.Count == 0)
+             return FormatResult("no_path", px, py, targetX, targetY, dist, tolerance);
  
-@@ -89,7 +112,7 @@ internal sealed class PathfindingService(RconClient rcon)
++        // Validate the complete returned route before any walking direction is set.
++        var (currentX, currentY) = await GetPositionAsync(cancellationToken);
++        if (Distance(px, py, currentX, currentY) > 0.5 ||
++            !NavigationPathPolicy.Valid(waypoints, currentX, currentY, targetX, targetY, tolerance))
++            return FormatResult("path_rejected", currentX, currentY, targetX, targetY,
++                Distance(currentX, currentY, targetX, targetY), tolerance);
++
+         // Draw debug visualization
          await DrawPathAsync(waypoints, tolerance, cancellationToken);
  
          // Follow waypoints from C#
@@ -207,7 +210,7 @@ index 2968058..711c024 100644
      }
  
      /// <summary>
-@@ -110,6 +133,7 @@ internal sealed class PathfindingService(RconClient rcon)
+@@ -110,6 +140,7 @@
          double targetX, double targetY,
          double tolerance,
          DateTime deadline,
@@ -215,7 +218,7 @@ index 2968058..711c024 100644
          CancellationToken cancellationToken)
      {
          // Segment index: player walks from waypoints[segIndex] toward waypoints[segIndex+1].
-@@ -168,7 +192,7 @@ internal sealed class PathfindingService(RconClient rcon)
+@@ -168,7 +199,7 @@
                  var (wpx, wpy) = waypoints[segIndex + 1];
                  var direction = CalculateDirection(px, py, wpx, wpy, _lastDirection);
                  if (_lastDirection != direction)
@@ -224,7 +227,7 @@ index 2968058..711c024 100644
  
                  await Task.Delay(PollInterval, cancellationToken);
              }
-@@ -448,10 +472,14 @@ internal sealed class PathfindingService(RconClient rcon)
+@@ -448,10 +479,14 @@
              """, cancellationToken);
      }
  
@@ -240,11 +243,9 @@ index 2968058..711c024 100644
              storage.walk_dir = {{direction}}
              rcon.print('ok')
              """), cancellationToken);
-diff --git a/FactorioMCP/Services/RconConnectionService.cs b/FactorioMCP/Services/RconConnectionService.cs
-index f5db2b8..26160fd 100644
 --- a/FactorioMCP/Services/RconConnectionService.cs
 +++ b/FactorioMCP/Services/RconConnectionService.cs
-@@ -24,7 +24,7 @@ internal sealed class RconConnectionService(
+@@ -24,7 +24,7 @@
      {
          var host = configuration["FACTORIO_RCON_HOST"] ?? "127.0.0.1";
          var port = int.TryParse(configuration["FACTORIO_RCON_PORT"], out var p) ? p : 27015;
@@ -253,7 +254,7 @@ index f5db2b8..26160fd 100644
  
          var delay = InitialBackoff;
          for (var attempt = 1; attempt <= MaxStartupAttempts; attempt++)
-@@ -34,7 +34,7 @@ internal sealed class RconConnectionService(
+@@ -34,7 +34,7 @@
                  await rcon.ConnectAndAuthenticateAsync(host, port, password, cancellationToken);
                  logger.LogInformation("RCON connected to {Host}:{Port}", host, port);
  
@@ -262,7 +263,7 @@ index f5db2b8..26160fd 100644
                  return;
              }
              catch (Exception ex) when (attempt < MaxStartupAttempts && !cancellationToken.IsCancellationRequested)
-@@ -50,7 +50,7 @@ internal sealed class RconConnectionService(
+@@ -50,7 +50,7 @@
  
          // Final attempt — let the exception propagate
          await rcon.ConnectAndAuthenticateAsync(host, port, password, cancellationToken);
@@ -271,9 +272,26 @@ index f5db2b8..26160fd 100644
      }
  
      public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-diff --git a/FactorioMCP/Tools/AutoEngineerTools.cs b/FactorioMCP/Tools/AutoEngineerTools.cs
-new file mode 100644
-index 0000000..9289014
+--- a/FactorioMCP/Tools/MovementTools.cs
++++ b/FactorioMCP/Tools/MovementTools.cs
+@@ -21,6 +21,8 @@
+         double targetX,
+         [Description("Target Y coordinate to walk toward")]
+         double targetY,
++        [Description("Owning AutoEngineer safety lease identifier")]
++        string safetyOwner,
+         [Description("Distance tolerance — arrived when within this many tiles of the target (default 2.0)")]
+         double tolerance = 2.0,
+         [Description("Maximum time to walk in seconds before giving up (default 30)")]
+@@ -28,7 +30,7 @@
+         CancellationToken cancellationToken = default)
+     {
+         return queue.ExecuteAsync(nameof(WalkToPosition), ct =>
+-            pathfinding.WalkToAsync(targetX, targetY, tolerance, timeoutSeconds, ct),
++            pathfinding.WalkToAsync(targetX, targetY, tolerance, timeoutSeconds, ct, safetyOwner),
+             cancellationToken);
+     }
+ 
 --- /dev/null
 +++ b/FactorioMCP/Tools/AutoEngineerTools.cs
 @@ -0,0 +1,50 @@
@@ -295,7 +313,7 @@ index 0000000..9289014
 +    };
 +
 +    [McpServerTool(Name = "autoengineer_policy"), Description("Report the restricted AutoEngineer dispatch policy.")]
-+    public string Policy() => "{\"version\":2,\"max_walk\":5,\"restricted\":true}";
++    public string Policy() => "{\"version\":3,\"max_walk\":5,\"restricted\":true}";
 +
 +    [McpServerTool(Name = "get_player_position"), Description("Read the single connected player's position.")]
 +    public Task<string> Position(CancellationToken cancellationToken = default) =>
@@ -327,31 +345,6 @@ index 0000000..9289014
 +            pathfinding.WalkToAsync(targetX, targetY, tolerance, timeoutSeconds, ct, safetyOwner), cancellationToken);
 +    }
 +}
-diff --git a/FactorioMCP/Tools/MovementTools.cs b/FactorioMCP/Tools/MovementTools.cs
-index 354622c..5a9b047 100644
---- a/FactorioMCP/Tools/MovementTools.cs
-+++ b/FactorioMCP/Tools/MovementTools.cs
-@@ -21,6 +21,8 @@ internal sealed class MovementTools(PathfindingService pathfinding, GameCommandQ
-         double targetX,
-         [Description("Target Y coordinate to walk toward")]
-         double targetY,
-+        [Description("Owning AutoEngineer safety lease identifier")]
-+        string safetyOwner,
-         [Description("Distance tolerance — arrived when within this many tiles of the target (default 2.0)")]
-         double tolerance = 2.0,
-         [Description("Maximum time to walk in seconds before giving up (default 30)")]
-@@ -28,7 +30,7 @@ internal sealed class MovementTools(PathfindingService pathfinding, GameCommandQ
-         CancellationToken cancellationToken = default)
-     {
-         return queue.ExecuteAsync(nameof(WalkToPosition), ct =>
--            pathfinding.WalkToAsync(targetX, targetY, tolerance, timeoutSeconds, ct),
-+            pathfinding.WalkToAsync(targetX, targetY, tolerance, timeoutSeconds, ct, safetyOwner),
-             cancellationToken);
-     }
- 
-diff --git a/FactorioMCP/Tools/SafetyTools.cs b/FactorioMCP/Tools/SafetyTools.cs
-new file mode 100644
-index 0000000..3edad68
 --- /dev/null
 +++ b/FactorioMCP/Tools/SafetyTools.cs
 @@ -0,0 +1,95 @@
@@ -450,9 +443,6 @@ index 0000000..3edad68
 +            """, cancellationToken);
 +    }
 +}
-diff --git a/FactorioMCP/packages.lock.json b/FactorioMCP/packages.lock.json
-new file mode 100644
-index 0000000..2efcebb
 --- /dev/null
 +++ b/FactorioMCP/packages.lock.json
 @@ -0,0 +1,359 @@
@@ -816,3 +806,32 @@ index 0000000..2efcebb
 +  }
 +}
 \ No newline at end of file
+--- /dev/null
++++ b/FactorioMCP/Services/NavigationPathPolicy.cs
+@@ -0,0 +1,26 @@
++namespace FactorioMCP.Services;
++
++// Pure validation; makes no RCON calls and cannot initiate movement.
++internal static class NavigationPathPolicy
++{
++    public static bool Valid(IReadOnlyList<(double x, double y)> path,
++        double startX, double startY, double targetX, double targetY, double tolerance)
++    {
++        static bool Finite(double x, double y) => double.IsFinite(x) && double.IsFinite(y);
++        static double Dist(double ax, double ay, double bx, double by) => Math.Sqrt((ax-bx)*(ax-bx)+(ay-by)*(ay-by));
++        if (!Finite(startX, startY) || !Finite(targetX, targetY) ||
++            !double.IsFinite(tolerance) || tolerance <= 0 || tolerance > .75 ||
++            path.Count == 0 || path.Count > 128) return false;
++        var direct = Dist(startX, startY, targetX, targetY);
++        if (direct < .5 || direct > 5) return false;
++        double length = 0, lastX = startX, lastY = startY;
++        foreach (var (x, y) in path)
++        {
++            if (!Finite(x, y) || Dist(startX, startY, x, y) > 5) return false;
++            length += Dist(lastX, lastY, x, y);
++            if (!double.IsFinite(length) || length > 5) return false;
++            lastX = x; lastY = y;
++        }
++        return Dist(lastX, lastY, targetX, targetY) <= tolerance;
++    }
++}

@@ -16,7 +16,7 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
     };
 
     [McpServerTool(Name = "autoengineer_policy"), Description("Report the restricted AutoEngineer dispatch policy.")]
-    public string Policy() => "{\"version\":2,\"max_walk\":5,\"restricted\":true}";
+    public string Policy() => "{\"version\":3,\"max_walk\":5,\"restricted\":true}";
 
     [McpServerTool(Name = "get_player_position"), Description("Read the single connected player's position.")]
     public Task<string> Position(CancellationToken cancellationToken = default) =>
