@@ -6,7 +6,7 @@ Use the project's Python 3.12 hashed runtime lockfile in an isolated environment
 python -m PyInstaller --noconfirm --distpath outputs --workpath work/launcher-build packaging/AutoEngineer.spec
 ```
 
-The spec produces AutoEngineer.exe (windowed) and AutoEngineerWorker.exe (console-capable, launched without console windows) sharing _internal. Console-capable workers preserve stdin/stdout cancellation and MCP transport. Never replace them with windowed workers. Game, models, .NET and policy-7 backend are separate installed prerequisites. Local profiles and credentials are excluded from public source/build manifests. Record build tool/runtime versions, source hashes and output hashes; this local build is not bit-for-bit reproducibility or code signing proof.
+The spec produces AutoEngineer.exe (windowed) and AutoEngineerWorker.exe (console-capable, launched without console windows) sharing _internal. Console-capable workers preserve stdin/stdout cancellation and MCP transport. Never replace them with windowed workers. Game, models, .NET and policy-8 backend are separate installed prerequisites. Install the input-only helper in the isolated profile. Local profiles and credentials are excluded from public source/build manifests. Record build tool/runtime versions, source hashes and output hashes; this local build is not bit-for-bit reproducibility or code signing proof.
 
 Profiles explicitly opt into an isolated test root, valid ZIP save, unlisted/private host and loopback RCON. Graphical hosting uses the private Factorio INI local-rcon keys; the launcher verifies them without writing secrets. Dedicated-server mode is retained but is not qualified by the new graphical-host tests.
 
