@@ -2,11 +2,12 @@
 
 ## Scope
 
-Reviewed the nine exposed implementations, their queued and direct RCON paths, argument handling, lease ownership, cancellation, and startup behavior. The legacy public tool-method inventory is in `UPSTREAM_TOOL_INVENTORY.json` (116 excluded methods). That inventory is not a claim that every disabled legacy implementation has received a full security audit. The restricted build compiles only `AutoEngineerTools` and `SafetyTools` from the Tools folder and registers those two classes explicitly. It registers no MCP resources and does not initialize a chat listener.
+Reviewed the ten exposed implementations, their queued and direct RCON paths, argument handling, lease ownership, cancellation, and startup behavior. The legacy public tool-method inventory is in `UPSTREAM_TOOL_INVENTORY.json` (116 excluded methods). That inventory is not a claim that every disabled legacy implementation has received a full security audit. The restricted build compiles only `AutoEngineerTools` and `SafetyTools` from the Tools folder and registers those two classes explicitly. It registers no MCP resources and does not initialize a chat listener.
 
 | Exposed tool | Implementation and checks | Game effect |
 |---|---|---|
-| `autoengineer_policy` | Fixed policy v3, max walk 5; no model-supplied policy | None |
+| `autoengineer_policy` | Fixed policy v4, max walk 5; no model-supplied policy | None |
+| `autoengineer_view` | Direct fixed Lua; one character; at most 2000 main-inventory slots and 64 item/quality groups; no arguments | Read position, tick, surface and inventory |
 | `get_player_position` | Queued fixed Lua through PathfindingService; no arbitrary arguments | Read position |
 | `get_nearby_entities` | Queued fixed Lua; finite radius greater than zero, at most 8; no remote center | Read entities |
 | `scan_resources` | Queued fixed Lua; finite radius greater than zero, at most 50; no remote center | Read resource summary |
