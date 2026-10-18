@@ -5,7 +5,7 @@
 - Upstream project: [sbarisic/FactorioMCP](https://github.com/sbarisic/FactorioMCP)
 - Reviewed upstream revision: `f2fca61707efe3107e7a3738bb83d1505b0126f7`
 - License: MIT
-- Use: separately obtained backend; the patch in `backend-safety/backend-safety.patch` contains modifications to upstream files and context from those files. `backend-safety/SafetyTools.cs` contains the added safety tools.
+- Use: separately obtained backend; the patch in `backend-safety/backend-safety.patch` contains modifications to upstream files and context from those files. `backend-safety/SafetyTools.cs` and `backend-safety/AutoEngineerTools.cs` contain the added restricted tools. The combined patch also modifies upstream dispatch, startup and build configuration; the upstream notice below still applies to derived material.
 
 The project's MIT license covers original AutoEngineer contributions. It does not replace upstream notices. Preserve the upstream license when copying or distributing the backend or material derived from it. The backend's license text is reproduced verbatim below, including its existing copyright placeholders; no upstream author, year, or license has been rewritten.
 

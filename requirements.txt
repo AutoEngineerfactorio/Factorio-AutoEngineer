@@ -1,3 +1,2 @@
-# Matches the MCP SDK version observed in the local Python 3.12 installation.
-# Direct dependency pin only; transitive dependencies are not locked yet.
+# Direct dependency. Install the full hash-pinned requirements.lock.
 mcp==2.3.0

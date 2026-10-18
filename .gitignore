@@ -47,3 +47,6 @@ external/
 *.private.*
 test-private.json
 work/
+
+# Isolated runtime state and structured events
+.local/

@@ -43,13 +43,13 @@ Windows dashboard / player approvals
 
 ## Safety and scope
 
-The target is **legitimate gameplay**—no teleporting, item spawning, or hidden creative-mode advantages. The existing MCP backend exposes capabilities broader than those approved for agent use; a tool allowlist in a prototype client should not be treated as a hardened sandbox. Keep the agent supervised and use an isolated test world.
+The target is **legitimate gameplay**—no teleporting, item spawning, or hidden creative-mode advantages. The required restricted backend exposes only nine reviewed tools and enforces movement bounds. RCON remains privileged; this is not an operating-system sandbox. See the [dispatch audit](docs/DISPATCH_AUDIT.md). Keep the agent supervised and use an isolated test world.
 
 Never commit passwords, API keys, saves, model weights, downloaded binaries, local configuration, build artifacts, or vendor source code without checking its license.
 
 ## Getting started
 
-The supervised prototype source is available in [`agent/`](agent/). Follow the [setup and safety instructions](docs/PROTOTYPE_SETUP.md), including the required [backend safety patch](backend-safety/README.md). There is no validated installer or stable release.
+The supervised prototype source is available in [`agent/`](agent/). Follow the [setup and safety instructions](docs/PROTOTYPE_SETUP.md), including the required [backend safety patch](backend-safety/README.md). Install the approved source package with the hashed Python lockfile and the combined restricted-backend patch. There is no installer or stable release.
 
 The actual dashboard Stop and Close controls, process-loss behavior and connection-loss behavior were tested in a disposable Factorio world. Read the [validation record and its limits](docs/SAFETY_VALIDATION.md). Further development is tracked in the [roadmap](ROADMAP.md).
 
