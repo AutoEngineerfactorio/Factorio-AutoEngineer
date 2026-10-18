@@ -20,7 +20,7 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
 
     [McpServerTool(Name = "autoengineer_policy"), Description("Report the restricted AutoEngineer dispatch policy.")]
     public string Policy() => System.Text.Json.JsonSerializer.Serialize(new {
-        version=6, max_walk=5, restricted=true,
+        version=7, max_walk=5, restricted=true,
         mode=Environment.GetEnvironmentVariable("AUTOENGINEER_BACKEND_MODE") ?? "helper" });
 
     [McpServerTool(Name = "autoengineer_view"), Description("Read bounded single-player position and main inventory; no game actions.")]

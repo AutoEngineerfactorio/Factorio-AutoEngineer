@@ -37,7 +37,7 @@ class DispatchBoundary:
         for item in response.content:
             if item.type == 'text':
                 data = json.loads(item.text)
-        if response.is_error or data != {"version": 6, "max_walk": 5, "restricted": True, "mode": self.policy.mode}:
+        if response.is_error or data != {"version": 7, "max_walk": 5, "restricted": True, "mode": self.policy.mode}:
             raise RuntimeError("Restricted backend policy mismatch")
 
     def approve(self, arguments, answer, tool='walk_to_position'):

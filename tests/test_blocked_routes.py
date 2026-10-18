@@ -21,7 +21,7 @@ class ChoiceRecoveryTests(unittest.TestCase):
         state = {"position": {"x": 0, "y": 0}, "resources": {"resources": [
             {"name": "coal", "center_x": 1, "center_y": -45}]}}
         failed = {"action": "walk", "x": .0889, "y": -3.999}
-        for outcome in ['no_path', 'stuck', 'timeout']:
+        for outcome in ['no_path', 'stuck', 'timeout', 'path_rejected']:
             choices = movement_choices(state, [{"decision": failed, "outcome": outcome}])
             self.assertTrue(choices)
             self.assertTrue(all(c['y'] >= 0 for c in choices))
@@ -60,7 +60,7 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         return session, control, planner
 
     async def test_known_route_failures_offer_fresh_approval_without_auto_dispatch(self):
-        for status in ['no_path', 'stuck', 'timeout']:
+        for status in ['no_path', 'stuck', 'timeout', 'path_rejected']:
             session, control, planner = await self.run_scenario(status)
             self.assertEqual(control.approve.await_count, 2)
             self.assertEqual(session.call_tool.await_count, 1)

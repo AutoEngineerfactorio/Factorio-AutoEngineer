@@ -21,7 +21,7 @@ def movement_choices(observation, history=()):
         scale = min(4.0 / distance, 1.0)
         x, y = round(px + dx * scale, 4), round(py + dy * scale, 4)
         for attempt in history:
-            failed = attempt.get("outcome") in {"no_path", "stuck", "timeout"}
+            failed = attempt.get("outcome") in {"no_path", "stuck", "timeout", "path_rejected"}
             rejected = attempt.get("result") == "rejected_by_user"
             target = attempt.get("decision", {})
             if (failed or rejected) and all(finite_number(target.get(k)) for k in ("x", "y")):

@@ -118,7 +118,7 @@
  await builder.Build().RunAsync();
 --- a/FactorioMCP/Services/FactorioService.cs
 +++ b/FactorioMCP/Services/FactorioService.cs
-@@ -54,15 +54,77 @@
+@@ -54,15 +54,133 @@
      /// </summary>
      internal const string LuaOnTickHandler = """
          script.on_event(defines.events.on_tick, function()
@@ -131,6 +131,11 @@
 +                and #game.connected_players == 1 and selected and selected.index == s.player
 +                and p and p.valid and p.character and p.character.valid
 +            if not active then
++                local n=storage.autoengineer_nav
++                if n and n.status=='running' then
++                    n.status='stopped'
++                    if p and p.valid then p.walking_state={walking=false,direction=defines.direction.north} end
++                end
 +                local op=storage.operation
 +            if op and not op.status then
 +                if op.kind=='craft' and p and p.valid then
@@ -156,13 +161,65 @@
 +                storage.mine_state = nil
 +                return
 +            end
++            local n=storage.autoengineer_nav
++            if n and n.status=='running' then
++                local function dist(a,b) return ((a.x-b.x)^2+(a.y-b.y)^2)^0.5 end
++                local function finish(status)
++                    n.status=status;storage.walk_dir=nil
++                    p.walking_state={walking=false,direction=defines.direction.north}
++                end
++                if n.owner~=s.owner or n.surface~=p.surface.index or game.tick>=n.deadline then
++                    finish('stopped')
++                else
++                    local pos=p.position
++                    local delta=dist(pos,n.previous)
++                    n.travel=n.travel+delta
++                    if delta>0.001 then n.last_progress=game.tick end
++                    n.previous={x=pos.x,y=pos.y}
++                    local speed=p.character_running_speed
++                    if dist(pos,n.origin)>5 or n.travel>5 then finish('limit_reached')
++                    elseif dist(pos,n.target)<=n.tolerance then finish('arrived')
++                    elseif game.tick-n.last_progress>180 then finish('stuck')
++                    elseif not speed or speed<=0 or speed~=speed then finish('stuck')
++                    else
++                        -- Advance only when physically near a corner, never by a projection
++                        -- that can skip the corner while the player is laterally offset.
++                        local reach=math.max(0.12,math.min(0.3,speed*0.8))
++                        while n.index<=#n.route and dist(pos,n.route[n.index])<=reach do n.index=n.index+1 end
++                        local target=n.route[n.index] or n.target
++                        local dx,dy=target.x-pos.x,target.y-pos.y
++                        -- Use Factorio's native sixteen walking directions, avoiding rapid
++                        -- cardinal/diagonal toggles on shallow bearings. Retain heading on ties.
++                        local best=nil;local score=math.huge
++                        for direction=0,15 do
++                            local angle=direction*math.pi/8
++                            local nx=pos.x+math.sin(angle)*speed
++                            local ny=pos.y-math.cos(angle)*speed
++                            local value=(target.x-nx)^2+(target.y-ny)^2
++                            if n.direction and direction~=n.direction then value=value+0.008 end
++                            if value<score-0.000001 or (math.abs(value-score)<0.000001 and direction==n.direction) then
++                                best=direction;score=value
++                            end
++                        end
++                        -- Check the next physical step before permitting it; retain headroom
++                        -- for fixed-point rounding. No player speed modifier is changed.
++                        local reserve=math.max(speed,delta)*1.1+0.01
++                        if n.travel+reserve>5 or dist(pos,n.origin)+reserve>5 then finish('limit_reached')
++                        else
++                            n.direction=best;storage.walk_dir=nil
++                            p.walking_state={walking=true,direction=best}
++                        end
++                    end
++                end
++            end
              local d = storage.walk_dir
 -            if d ~= nil and p.character and p.character.valid then
 -                p.walking_state = {walking = true, direction = d}
+-            end
+-            if storage.mine_state then
 +            if d ~= nil then
 +                p.walking_state = {walking=true, direction=d}
-             end
--            if storage.mine_state then
++            end
 +            local op=storage.operation
 +            if op and not op.status then
 +                local inv=p.get_main_inventory()
@@ -204,6 +261,15 @@
          """;
 --- a/FactorioMCP/Services/PathfindingService.cs
 +++ b/FactorioMCP/Services/PathfindingService.cs
+@@ -6,7 +6,7 @@
+ namespace FactorioMCP.Services;
+ 
+ /// <summary>
+-/// Pathfinding service using Factorio's A* pathfinder with C#-driven waypoint following.
++/// Pathfinding service using Factorio's A* pathfinder with bounded game-tick steering.
+ /// 
+ /// Design: All navigation logic runs in C#, with Lua only used for:
+ ///   1. Requesting paths (async via request_path)
 @@ -38,13 +38,36 @@
          double targetX, double targetY,
          double tolerance,
@@ -263,24 +329,149 @@
      }
  
      /// <summary>
-@@ -110,6 +140,7 @@
+@@ -110,80 +140,60 @@
          double targetX, double targetY,
          double tolerance,
          DateTime deadline,
 +        string safetyOwner,
          CancellationToken cancellationToken)
      {
-         // Segment index: player walks from waypoints[segIndex] toward waypoints[segIndex+1].
-@@ -168,7 +199,7 @@
-                 var (wpx, wpy) = waypoints[segIndex + 1];
-                 var direction = CalculateDirection(px, py, wpx, wpy, _lastDirection);
-                 if (_lastDirection != direction)
+-        // Segment index: player walks from waypoints[segIndex] toward waypoints[segIndex+1].
+-        // When projection along the segment passes the endpoint, advance to next segment.
+-        int segIndex = 0;
+-        double bestProgress = 0; // cumulative distance along path (for stuck detection)
+-        int stuckCount = 0;
+-        const int maxStuckCount = 60; // ~3 seconds at 50ms poll
+-
++        // Steering and physical bounds run every game tick, not across RCON round trips.
++        var id = Guid.NewGuid().ToString("N");
++        var route = "{" + string.Join(",", waypoints.Select(p =>
++            string.Create(CultureInfo.InvariantCulture, $"{{x={p.x:R},y={p.y:R}}}"))) + "}";
++        await rcon.ExecuteLuaAsync(string.Create(CultureInfo.InvariantCulture, $$"""
++            local s=storage.autoengineer_safety
++            local p=game.connected_players[1]
++            if not s or s.stopped or s.owner~="{{safetyOwner}}" or game.tick>=s.deadline then error('lease inactive') end
++            storage.walk_dir=nil
++            storage.autoengineer_nav={id="{{id}}",owner="{{safetyOwner}}",surface=p.surface.index,
++                origin={x=p.position.x,y=p.position.y},previous={x=p.position.x,y=p.position.y},
++                target={x={{targetX:R}},y={{targetY:R}}},tolerance={{tolerance:R}},
++                route={{route}},index=1,travel=0,status='running',last_progress=game.tick,
++                deadline=game.tick+1200}
++            rcon.print('ok')
++            """), cancellationToken);
++        string status = "timeout";
+         try
+         {
+             while (DateTime.UtcNow < deadline)
+             {
+                 cancellationToken.ThrowIfCancellationRequested();
+-
+-                var (px, py) = await GetPositionAsync(cancellationToken);
+-
+-                // Check if we've reached the final destination
+-                var dist = Distance(px, py, targetX, targetY);
+-                if (dist <= tolerance)
+-                {
+-                    await StopWalkingAsync(cancellationToken);
+-                    return FormatResult("arrived", px, py, targetX, targetY, dist, tolerance);
+-                }
+-
+-                // Advance segments using projection
+-                segIndex = AdvanceSegment(waypoints, segIndex, px, py);
+-
+-                // Past last segment — arrived (close enough to final waypoint)
+-                if (segIndex >= waypoints.Count - 1)
+-                {
+-                    await StopWalkingAsync(cancellationToken);
+-                    return FormatResult("arrived", px, py, targetX, targetY, dist, tolerance);
+-                }
+-
+-                // Stuck detection: measure progress along the path, not toward the goal.
+-                // Progress = sum of completed segment lengths + projection on current segment.
+-                var progress = GetPathProgress(waypoints, segIndex, px, py);
+-                if (progress > bestProgress + 0.1)
+-                {
+-                    bestProgress = progress;
+-                    stuckCount = 0;
+-                }
+-                else
+-                {
+-                    stuckCount++;
+-                }
+-
+-                if (stuckCount > maxStuckCount)
+-                {
+-                    await StopWalkingAsync(cancellationToken);
+-                    return FormatResult("stuck", px, py, targetX, targetY, dist, tolerance);
+-                }
+-
+-                // Steer toward the endpoint of the current segment
+-                var (wpx, wpy) = waypoints[segIndex + 1];
+-                var direction = CalculateDirection(px, py, wpx, wpy, _lastDirection);
+-                if (_lastDirection != direction)
 -                    await SetWalkingDirectionAsync(direction, cancellationToken);
-+                    await SetWalkingDirectionAsync(direction, safetyOwner, cancellationToken);
- 
+-
++                var json = await rcon.ExecuteLuaAsync($$"""
++                    local n=storage.autoengineer_nav
++                    rcon.print(helpers.table_to_json({status=n and n.id=="{{id}}" and n.owner=="{{safetyOwner}}" and n.status or 'stopped'}))
++                    """, cancellationToken);
++                using var doc = JsonDocument.Parse(json);
++                status = doc.RootElement.GetProperty("status").GetString() ?? "stopped";
++                if (status != "running") break;
                  await Task.Delay(PollInterval, cancellationToken);
              }
-@@ -448,10 +479,14 @@
+-        }
+-        catch (OperationCanceledException)
+-        {
+-            try { await StopWalkingAsync(CancellationToken.None); } catch { }
+-            throw;
+-        }
+-
+-        // Timeout
+-        await StopWalkingAsync(cancellationToken);
+-        var (finalX, finalY) = await GetPositionAsync(cancellationToken);
+-        var finalDist = Distance(finalX, finalY, targetX, targetY);
+-        return FormatResult("timeout", finalX, finalY, targetX, targetY, finalDist, tolerance);
++            if (status == "running") status = "timeout";
++        }
++        finally
++        {
++            await StopWalkingAsync(CancellationToken.None, safetyOwner, id);
++        }
++        // Report the observed stopped position, never an in-motion snapshot or segment projection.
++        var previous = await GetPositionAsync(cancellationToken);
++        (double x, double y) final = previous;
++        bool stationary = false;
++        for (int i=0; i<5; i++)
++        {
++            await Task.Delay(TimeSpan.FromMilliseconds(35), cancellationToken);
++            final = await GetPositionAsync(cancellationToken);
++            if (Distance(previous.x, previous.y, final.x, final.y) <= .001) { stationary=true; break; }
++            previous=final;
++        }
++        var remaining=Distance(final.x,final.y,targetX,targetY);
++        if (!stationary || (status=="arrived" && remaining>tolerance)) status="verification_failed";
++        return FormatResult(status,final.x,final.y,targetX,targetY,remaining,tolerance);
+     }
+ 
+     /// <summary>
+@@ -438,20 +448,28 @@
+         return ParsePosition(json);
+     }
+ 
+-    private async Task StopWalkingAsync(CancellationToken cancellationToken)
++    private async Task StopWalkingAsync(CancellationToken cancellationToken, string owner, string id)
+     {
+         _lastDirection = null;
+-        await rcon.ExecuteLuaAsync("""
++        await rcon.ExecuteLuaAsync($$"""
++            local n=storage.autoengineer_nav
++            local s=storage.autoengineer_safety
++            if not n or n.id~="{{id}}" or n.owner~="{{owner}}" or not s or s.owner~="{{owner}}" then rcon.print('not_owned') return end
+             storage.walk_dir = nil
++            if n and n.status=='running' then n.status='stopped' end
+             game.connected_players[1].walking_state = {walking = false, direction = defines.direction.north}
+             rcon.print('ok')
              """, cancellationToken);
      }
  
@@ -370,7 +561,7 @@
 +
 +    [McpServerTool(Name = "autoengineer_policy"), Description("Report the restricted AutoEngineer dispatch policy.")]
 +    public string Policy() => System.Text.Json.JsonSerializer.Serialize(new {
-+        version=6, max_walk=5, restricted=true,
++        version=7, max_walk=5, restricted=true,
 +        mode=Environment.GetEnvironmentVariable("AUTOENGINEER_BACKEND_MODE") ?? "helper" });
 +
 +    [McpServerTool(Name = "autoengineer_view"), Description("Read bounded single-player position and main inventory; no game actions.")]

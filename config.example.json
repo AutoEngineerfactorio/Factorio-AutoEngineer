@@ -4,5 +4,5 @@
   "rcon_host": "127.0.0.1",
   "rcon_port": 27015,
   "llm_api_url": "http://127.0.0.1:8080/v1",
-  "llm_model": "qwen2.5-coder-7b-instruct"
+  "llm_model": "phi-4-mini-instruct"
 }

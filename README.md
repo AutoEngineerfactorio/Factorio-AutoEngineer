@@ -8,7 +8,7 @@ Factorio AutoEngineer is an experimental, locally powered AI companion project f
 
 ## What works in our development prototype
 
-- Local Qwen model served through `llama.cpp` with Vulkan on an AMD GPU
+- Local Phi-4-mini model (Qwen remains configurable) served through `llama.cpp` with Vulkan on an AMD GPU
 - FactorioMCP connection to a Factorio 2.0 test server
 - Live player position, inventory, resource scans, and recipe observations
 - AI-generated movement proposals checked by a Python controller
@@ -36,7 +36,7 @@ FactorioMCP (separate third-party project)
          ⇅
 Python supervised agent + action validation
          ⇅
-Local llama.cpp server / Qwen model
+Local llama.cpp server / Phi-4-mini (default) or Qwen
          ⇅
 Windows dashboard / player approvals
 ```
@@ -73,7 +73,7 @@ Original Factorio-AutoEngineer code and documentation are licensed under the [MI
 
 Factorio is developed by Wube Software. Factorio AutoEngineer is an independent community project and is not affiliated with or endorsed by Wube Software.
 
-The [live dashboard](docs/LIVE_DASHBOARD.md) displays a read-only observed map and main inventory during supervised sessions. It requires the current policy-v6 backend patch and rebuild.
+The [live dashboard](docs/LIVE_DASHBOARD.md) displays a read-only observed map and main inventory during supervised sessions. It requires the current policy-v7 backend patch and rebuild.
 
 [Verified starter mining and crafting](docs/VERIFIED_OPERATIONS.md) is available through the dashboard, with batch limits, preflight checks, inventory verification and owned-operation stopping.
 
@@ -82,3 +82,5 @@ Detailed future work: [reconciled handoff](docs/WORK_HANDOFF_2026-10-18.md) and 
 The game-style map and slot inventory stay live whenever the dashboard is open, independently of the AI. Rebuild the current backend patch; see [display setup](docs/LIVE_DASHBOARD.md) and [validation](docs/DASHBOARD_MAP_VALIDATION.md).
 
 Operating modes are documented in [OPERATING_MODES.md](docs/OPERATING_MODES.md). The current mode-aware backend must be rebuilt before Semi-Autonomous sessions run.
+
+The default model is **Phi-4-mini-instruct**. Qwen2.5-Coder 7B remains supported through `llm_model` in local configuration. See [model setup and comparison](docs/MODEL_SELECTION.md) and [normal-speed movement](docs/NORMAL_MOVEMENT.md). Rebuild the policy-v7 backend before using this version.
