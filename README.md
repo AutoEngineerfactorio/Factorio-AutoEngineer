@@ -73,7 +73,7 @@ Original Factorio-AutoEngineer code and documentation are licensed under the [MI
 
 Factorio is developed by Wube Software. Factorio AutoEngineer is an independent community project and is not affiliated with or endorsed by Wube Software.
 
-The [live dashboard](docs/LIVE_DASHBOARD.md) displays a read-only observed map and main inventory during supervised sessions. It requires the current policy-v7 backend patch and rebuild.
+The [live dashboard](docs/LIVE_DASHBOARD.md) displays a read-only observed map and main inventory during supervised sessions. It requires the current policy-v8 backend patch and rebuild.
 
 [Verified starter mining and crafting](docs/VERIFIED_OPERATIONS.md) is available through the dashboard, with batch limits, preflight checks, inventory verification and owned-operation stopping.
 
@@ -83,7 +83,7 @@ The game-style map and slot inventory stay live whenever the dashboard is open, 
 
 Operating modes are documented in [OPERATING_MODES.md](docs/OPERATING_MODES.md). The current mode-aware backend must be rebuilt before Semi-Autonomous sessions run.
 
-The default model is **Phi-4-mini-instruct**. Qwen2.5-Coder 7B remains supported through `llm_model` in local configuration. See [model setup and comparison](docs/MODEL_SELECTION.md) and [normal-speed movement](docs/NORMAL_MOVEMENT.md). Rebuild the policy-v7 backend before using this version.
+The default model is **Phi-4-mini-instruct**. Qwen2.5-Coder 7B remains supported through `llm_model` in local configuration. See [model setup and comparison](docs/MODEL_SELECTION.md) and [normal-speed movement](docs/NORMAL_MOVEMENT.md). Rebuild the policy-v8 backend before using this version.
 
 ## Windows launcher preview
 

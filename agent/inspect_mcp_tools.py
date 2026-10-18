@@ -1,8 +1,7 @@
-from autoengineer_config import mcp_parameters
-
 import asyncio
 import json
 
+from autoengineer_config import mcp_parameters
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
 
@@ -18,6 +17,7 @@ NAMES = [
     "get_recipe_details",
     "get_nearby_entities",
 ]
+
 
 async def main():
     params = mcp_parameters()
@@ -42,6 +42,7 @@ async def main():
                 print(json.dumps(tool.input_schema, indent=2))
 
     print("\nINSPECTION COMPLETE: No gameplay actions executed.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

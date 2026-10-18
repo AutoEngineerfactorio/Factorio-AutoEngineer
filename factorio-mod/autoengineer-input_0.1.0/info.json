@@ -1,0 +1,11 @@
+{
+  "name": "autoengineer-input",
+  "version": "0.1.0",
+  "title": "AutoEngineer human input guard",
+  "author": "AutoEngineer contributors",
+  "factorio_version": "2.0",
+  "dependencies": [
+    "base >= 2.0.0"
+  ],
+  "description": "Input-only control adapter: manual movement, mining and building revoke the AutoEngineer lease. No recipe or progression changes."
+}

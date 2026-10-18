@@ -1,0 +1,11 @@
+.local/
+.env
+.env.*
+*.private.*
+*.log
+*.zip
+*.gguf
+external/
+bin/
+obj/
+__pycache__/

@@ -1,10 +1,11 @@
 """Exercise dashboard shutdown without creating a Tk window or child process."""
+
 import io
-from pathlib import Path
 import queue
 import sys
-from types import SimpleNamespace
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
@@ -15,7 +16,7 @@ class DashboardStopTests(unittest.TestCase):
     def dashboard(self):
         view = Dashboard.__new__(Dashboard)
         view.proc = SimpleNamespace(poll=lambda: None, stdin=io.StringIO())
-        view.current_mode = 'semi'
+        view.current_mode = "semi"
         view.observer = None
         view.q = queue.Queue()
         view.stop_requested = False
@@ -62,7 +63,10 @@ class DashboardStopTests(unittest.TestCase):
 
     def test_close_waits_for_controller_exit(self):
         view = self.dashboard()
-        with patch("autoengineer_dashboard.messagebox.askyesno", return_value=True), patch.object(view, "stop") as stop:
+        with (
+            patch("autoengineer_dashboard.messagebox.askyesno", return_value=True),
+            patch.object(view, "stop") as stop,
+        ):
             view.on_close()
         stop.assert_called_once()
         view.root.destroy.assert_not_called()
@@ -73,9 +77,11 @@ class DashboardStopTests(unittest.TestCase):
 
     def test_close_when_controller_exits_during_confirmation(self):
         view = self.dashboard()
+
         def controller_exits(*args):
             view.proc = None  # Nested dialog event loop has consumed the exit event.
             return True
+
         with patch("autoengineer_dashboard.messagebox.askyesno", side_effect=controller_exits):
             view.on_close()
         view.root.destroy.assert_called_once()

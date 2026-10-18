@@ -1,7 +1,6 @@
-from autoengineer_config import mcp_parameters
-
 import asyncio
 
+from autoengineer_config import mcp_parameters
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
 
@@ -25,10 +24,7 @@ async def main():
                 print("Available names:", names)
                 return
 
-            result = await session.call_tool(
-                "get_player_position",
-                arguments={}
-            )
+            result = await session.call_tool("get_player_position", arguments={})
 
             print("Player position result:")
 
@@ -40,6 +36,7 @@ async def main():
                 print("MCP returned an error.")
 
             print("READ-ONLY TEST COMPLETE")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

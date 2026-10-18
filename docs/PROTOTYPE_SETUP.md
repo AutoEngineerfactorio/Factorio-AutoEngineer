@@ -66,4 +66,8 @@ Structured per-session events are in `.local/events/`; backend working state is 
 
 ## Model and movement update
 
-Use [model selection](MODEL_SELECTION.md) to launch Phi-4-mini or retain Qwen. This release requires the policy-v7 backend rebuild. For smooth local scripted movement, the tested configuration hosts the same disposable save in the graphical game using private loopback RCON; see [normal movement and hosting](NORMAL_MOVEMENT.md). A joined multiplayer client can still show prediction corrections. Keep separate test data and main saves isolated.
+Use [model selection](MODEL_SELECTION.md) to launch Phi-4-mini or retain Qwen. This release requires the policy-v8 backend rebuild. For smooth local scripted movement, the tested configuration hosts the same disposable save in the graphical game using private loopback RCON; see [normal movement and hosting](NORMAL_MOVEMENT.md). A joined multiplayer client can still show prediction corrections. Keep separate test data and main saves isolated.
+
+## Input helper required for policy 8
+
+Copy `factorio-mod/autoengineer-input_0.1.0` into the isolated game profile's mods directory. Enable `autoengineer-input` in that profile and fully restart Factorio. This input-only adapter preserves normal controls and lets human input immediately revoke the AI lease. Without it, observation works but gameplay leases fail closed. See [launcher setup](LAUNCHER.md) and [foundation validation](FOUNDATION_VALIDATION.md).
