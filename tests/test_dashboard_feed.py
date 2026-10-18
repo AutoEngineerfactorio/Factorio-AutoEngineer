@@ -19,6 +19,12 @@ def raw():
 
 
 class FrameTests(unittest.TestCase):
+    def test_final_operation_snapshot_can_be_published_before_poll_interval(self):
+        with patch('builtins.print') as output:
+            DashboardFeed().publish(dict(raw(),inventory=[dict(name='iron-gear-wheel',quality='normal',count=3)]))
+        frame=parse_frame(output.call_args.args[0])
+        self.assertEqual(frame['inventory'][0]['count'],3)
+
     def test_roundtrip_and_main_inventory_quality(self):
         data=snapshot(raw());data.update(DashboardFeed().features)
         frame=parse_frame(PREFIX+json.dumps(dict(schema=1,status='ok',**data)))
