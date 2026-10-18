@@ -11,12 +11,12 @@ This is a planning roadmap, not a promise of release dates.
 - [x] Basic desktop UI approvals and logs
 
 ## Phase 1 — Safe, reproducible development release
-- [ ] Audit tool implementations and establish a strict dispatch boundary
-- [ ] Replace temporary RCON credentials and isolate configuration
-- [ ] Address dependency vulnerability warnings
-- [ ] Package only authorized project source, with tested installation instructions
-- [ ] Detect stalled, repeated, and failed movements reliably
-- [ ] Add concise, structured agent event logs
+- [x] Audit tool implementations and establish a strict dispatch boundary
+- [x] Replace temporary RCON credentials and isolate configuration
+- [x] Address dependency vulnerability warnings
+- [x] Package only authorized project source, with tested installation instructions
+- [x] Detect stalled, repeated, and failed movements reliably
+- [x] Add concise, structured agent event logs
 
 ## Phase 2 — Intelligent exploration
 - [ ] Persistent visited-area and failed-target map
