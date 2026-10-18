@@ -5,7 +5,7 @@ import threading
 import uuid
 from agent_events import emit
 
-PROMPT = "Execute this movement? [y/N/q]: "
+PROMPT = "Execute this action? [y/N/q]: "
 SAFETY_VERSION = 1
 
 

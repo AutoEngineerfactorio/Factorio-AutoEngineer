@@ -4,6 +4,7 @@ Runs the existing supervised_agent.py as a child process. No automatic approvals
 The dashboard does not directly access Factorio, RCON, or MCP.
 """
 import os
+import json
 import queue
 import re
 import subprocess
@@ -16,6 +17,7 @@ from session_safety import PROMPT
 from navigation_objective import Objective
 from dashboard_feed import PREFIX, parse_frame
 from dashboard_view import LiveView
+from verified_operations import validate_operation
 
 AGENT = Path(__file__).resolve().parent / "supervised_agent.py"
 
@@ -33,6 +35,9 @@ class Dashboard:
         self.closing = False
         self.latest_proposal = "No action proposed yet."
         self.objective = tk.StringVar(value=os.environ.get('AUTOENGINEER_OBJECTIVE', ''))
+        self.task = tk.StringVar(value='Navigate')
+        self.operation_name = tk.StringVar(value='iron-ore')
+        self.operation_count = tk.StringVar(value='1')
         self.status = tk.StringVar(value="Idle")
         self.position = tk.StringVar(value="Unknown")
         self.cycle = tk.StringVar(value="-")
@@ -62,11 +67,19 @@ class Dashboard:
         objective_box.pack(fill='x')
         ttk.Label(objective_box, text='Objective (optional resource name or x,y):').pack(side='left')
         ttk.Entry(objective_box, textvariable=self.objective, width=30).pack(side='left', padx=10)
+        tasks = ttk.Frame(self.root, padding=(18, 0, 18, 8)); tasks.pack(fill='x')
+        ttk.Label(tasks, text='Session action:').pack(side='left')
+        task = ttk.Combobox(tasks, textvariable=self.task, values=['Navigate', 'Mine', 'Craft'], state='readonly', width=12)
+        task.pack(side='left', padx=8)
+        task.bind('<<ComboboxSelected>>', lambda _: self.operation_name.set('iron-gear-wheel' if self.task.get() == 'Craft' else 'iron-ore'))
+        ttk.Combobox(tasks, textvariable=self.operation_name, values=['iron-ore','copper-ore','coal','stone','iron-gear-wheel','copper-cable'], width=20).pack(side='left')
+        ttk.Label(tasks, text='Batch (1–3):').pack(side='left', padx=(12, 4))
+        ttk.Spinbox(tasks, textvariable=self.operation_count, from_=1, to=3, width=4).pack(side='left')
         controls = ttk.Frame(self.root, padding=(18, 0))
         controls.pack(fill="x")
         self.start_button = ttk.Button(controls, text="Start supervised session", command=self.start)
         self.start_button.pack(side="left", padx=(0, 10))
-        self.approve_button = ttk.Button(controls, text="Approve movement", command=lambda: self.answer("y"), state="disabled")
+        self.approve_button = ttk.Button(controls, text="Approve action", command=lambda: self.answer("y"), state="disabled")
         self.approve_button.pack(side="left", padx=(0, 10))
         self.reject_button = ttk.Button(controls, text="Reject / next proposal", command=lambda: self.answer("n"), state="disabled")
         self.reject_button.pack(side="left", padx=(0, 10))
@@ -82,7 +95,7 @@ class Dashboard:
         self.log.pack(fill="both", expand=True, padx=18, pady=(0, 12))
         footer = ttk.Frame(self.root, padding=(18, 0, 18, 12))
         footer.pack(fill="x")
-        ttk.Label(footer, text="Movement requires approval. Safety controls may stop walking and mining.").pack(side="left")
+        ttk.Label(footer, text="Actions require approval. Stop clears movement, mining and unfinished agent-owned crafts.").pack(side="left")
         ttk.Button(footer, text="Clear log", command=self.clear_log).pack(side="right")
 
     def append(self, txt):
@@ -108,16 +121,24 @@ class Dashboard:
         if self.closing or self.proc is not None:
             return
         selected_objective = self.objective.get().strip()
-        if selected_objective:
+        mode = self.task.get() if hasattr(self, 'task') else 'Navigate'
+        if selected_objective and mode == 'Navigate':
             try:
                 Objective(selected_objective)
             except ValueError as exc:
                 messagebox.showerror('Invalid objective', str(exc))
                 return
         child_env = dict(os.environ)
+        child_env.pop('AUTOENGINEER_OPERATION', None)
         child_env.pop('AUTOENGINEER_OBJECTIVE', None)
         if selected_objective:
             child_env['AUTOENGINEER_OBJECTIVE'] = selected_objective
+        if mode != 'Navigate':
+            try:
+                operation = validate_operation({'kind': mode.lower(), 'name': self.operation_name.get().strip(), 'count': int(self.operation_count.get())})
+            except (ValueError, TypeError) as exc:
+                messagebox.showerror('Invalid operation', str(exc)); return
+            child_env['AUTOENGINEER_OPERATION'] = json.dumps(operation)
         if not AGENT.is_file():
             messagebox.showerror("Agent not found", f"Place dashboard next to:\n{AGENT}")
             return
@@ -229,11 +250,11 @@ class Dashboard:
         if match:
             self.cycle.set(match.group(1))
             self.status.set("Planning")
-        if "Qwen proposes:" in line:
-            self.proposal_label.configure(text="Reading model proposal...")
-        if '"action":' in line or '"reason":' in line or '"targetX":' in line or '"targetY":' in line:
+        if "Qwen proposes:" in line or 'Action proposed:' in line:
+            self.proposal_label.configure(text="Reading proposed action...")
+        if any(key in line for key in ('"action":', '"reason":', '"targetX":', '"targetY":', '"name":', '"count":')):
             current = self.proposal_label.cget("text")
-            if current == "Reading model proposal...":
+            if current == "Reading proposed action...":
                 current = ""
             self.proposal_label.configure(text=(current + line.strip() + "  ")[-900:])
         match = re.search(r"Final position:\s*(.+)", line)
@@ -241,6 +262,8 @@ class Dashboard:
             self.position.set(match.group(1))
         if "Verified success:" in line:
             self.verification.set(line.split(":", 1)[-1].strip())
+        if 'Verified operation:' in line:
+            self.verification.set(line.split(':', 1)[-1].strip())
         if "Verification failed" in line:
             self.status.set("Verification failed")
 

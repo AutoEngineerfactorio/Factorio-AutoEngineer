@@ -7,7 +7,7 @@ import threading
 import uuid
 
 FIELDS = {"cycle", "approved", "moved", "remaining", "progress", "elapsed", "count"}
-EVENTS = {"session_start", "policy_verified", "proposal", "approval", "dispatch",
+EVENTS = {"operation_proposal", "operation_verified", "operation_failed", "session_start", "policy_verified", "proposal", "approval", "dispatch",
           "movement_arrived", "movement_failed", "movement_stalled", "movement_repeated",
           "route_recovery", "stop_requested", "stop_confirmed", "stop_unconfirmed", "session_end"}
 

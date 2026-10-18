@@ -19,6 +19,7 @@ from exploration_memory import load_memory
 from navigation_objective import load_objective
 from resource_discovery import ResourceDiscovery
 from dashboard_feed import DashboardFeed
+from verified_operations import load_operation, run_operation
 
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
@@ -361,9 +362,11 @@ async def main():
                 try:
                     safety = SafetySession(session, control)
                     feed = DashboardFeed()
+                    operation = load_operation()
                     await safety.run(
                         lambda: feed.run(session, control,
-                            lambda: run_cycles(session, control, safety.owner, feed))
+                            lambda: run_operation(session, control, safety.owner, operation, feed)
+                            if operation is not None else run_cycles(session, control, safety.owner, feed))
                     )
                 except StopRequested:
                     print("Stopped by user or closed input.", flush=True)

@@ -51,6 +51,12 @@ class DashboardFeed:
         self.features['objective'] = point(objective) if objective is not None else None
         self.features['proposal'] = point(proposal) if isinstance(proposal, dict) and proposal.get('action') == 'walk' else None
 
+    def publish(self, raw):
+        data = snapshot(raw)
+        data.update(self.features)
+        data['resource_age_seconds'] = max(0, time.monotonic()-self.resource_recorded) if self.resource_recorded is not None else None
+        print(PREFIX + json.dumps({'schema': 1, 'status': 'ok', **data}, separators=(',', ':'), allow_nan=False), flush=True)
+
     async def poll(self, session, control, interval=1):
         surface = None
         while not control.stop.is_set():
@@ -63,9 +69,7 @@ class DashboardFeed:
                     control.stop.set()
                     raise ValueError('Surface changed during session')
                 surface = data['surface']
-                data.update(self.features)
-                data['resource_age_seconds'] = max(0, time.monotonic()-self.resource_recorded) if self.resource_recorded is not None else None
-                print(PREFIX + json.dumps({'schema': 1, 'status': 'ok', **data}, separators=(',', ':'), allow_nan=False), flush=True)
+                self.publish(raw)
             except Exception:
                 print(PREFIX + '{"schema":1,"status":"unavailable"}', flush=True)
             await asyncio.sleep(interval)
