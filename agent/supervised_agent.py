@@ -15,6 +15,7 @@ from movement_proposals import movement_choices, proposal_messages, resolve_choi
 from movement_watchdog import monitored_walk
 from agent_events import emit
 from dispatch_boundary import DispatchBoundary
+from exploration_memory import load_memory
 
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
@@ -127,6 +128,8 @@ async def run_cycles(session, control, owner):
         session = DispatchBoundary(session, control)
     history = []
     attempted = []
+    memory = load_memory()
+    print('Exploration memory: ' + ('enabled for the selected world' if memory else 'disabled; set AUTOENGINEER_WORLD for persistence'))
     for step in range(1, MAX_ACTIONS + 1):
         emit("proposal", cycle=step)
         print(f"\n=== AI CYCLE {step}/{MAX_ACTIONS} ===")
@@ -148,6 +151,9 @@ async def run_cycles(session, control, owner):
             "resources": resources,
             "nearby": nearby
         }
+        if memory is not None:
+            memory.remember(position)
+            state['exploration'] = memory
 
         decision = await daemon_call(
             ask_ai, state, history
@@ -204,6 +210,9 @@ async def run_cycles(session, control, owner):
             break
 
         arguments = validate(decision, latest)
+        if memory is not None and memory.blocked(decision):
+            print('Previously failed destination rejected; no movement dispatched.')
+            continue
 
         name = "walk_to_position"
         if name not in WRITE_TOOLS:
@@ -269,6 +278,10 @@ async def run_cycles(session, control, owner):
         print("Verified success:", success)
 
         stalled = outcome.get("status") == "stuck" or (not success and moved < 0.25 and outcome.get("status") != "no_path")
+        if memory is not None:
+            memory.remember(final)
+            if not success:
+                memory.remember(decision, failed=True)
         emit("movement_arrived" if success else "movement_stalled" if stalled else "movement_failed",
              cycle=step, moved=moved, remaining=remaining, progress=progress, elapsed=time.monotonic()-began,
              status=outcome.get("status") if outcome.get("status") in {"arrived", "no_path", "stuck", "timeout"} else "other")
