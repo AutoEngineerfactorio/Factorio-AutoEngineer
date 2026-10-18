@@ -184,7 +184,7 @@ async def run_cycles(session, control, owner, feed=None, policy=None):
         if feed is not None:
             feed.update(resources, memory, state.get('objective'), decision)
 
-        print("\nQwen proposes:")
+        print("\nModel proposes:")
         print(json.dumps(decision, indent=2))
 
         try:

@@ -4,6 +4,7 @@ import json
 import math
 import os
 from pathlib import Path
+from app_runtime import data_root
 import tempfile
 
 LIMIT = 10000
@@ -20,7 +21,7 @@ class ExplorationMemory:
     def __init__(self, world, directory=None):
         if not isinstance(world, str) or not world.strip() or len(world) > 200:
             raise ValueError('Use a nonempty world identifier of at most 200 characters')
-        self.path = Path(directory or Path(__file__).resolve().parents[1] / '.local/exploration') / (hashlib.sha256(world.encode()).hexdigest() + '.json')
+        self.path = Path(directory or data_root() / '.local/exploration') / (hashlib.sha256(world.encode()).hexdigest() + '.json')
         self.data = {'schema': 1, 'visited': [], 'failed': []}
         if self.path.exists():
             if self.path.stat().st_size > 2000000:

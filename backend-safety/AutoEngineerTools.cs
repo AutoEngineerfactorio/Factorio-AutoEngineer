@@ -104,8 +104,89 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
                     end
                 end
             end
+            -- Optional read-only overlays. No charting, connector creation or world mutation.
+            local overlays={schema=1,available={},partial={},player_name=string.sub(p.name,1,128)}
+            local area={{ox,oy},{ox+256,oy+256}}
+            local function inside(pos)
+                return pos.x>=ox and pos.x<ox+256 and pos.y>=oy and pos.y<oy+256
+            end
+            local function clean(text)
+                return string.sub(string.gsub(text or "","%c"," "),1,128)
+            end
+            local function layer(name,read)
+                local ok,result,partial=pcall(read)
+                overlays.available[name]=ok
+                overlays[name]=ok and result or {}
+                overlays.partial[name]=ok and partial==true or false
+            end
+            layer("pollution",function()
+                local result={}
+                for cy=math.floor(oy/32),math.floor((oy+255)/32) do
+                    for cx=math.floor(ox/32),math.floor((ox+255)/32) do
+                        local x,y=math.max(ox,cx*32),math.max(oy,cy*32)
+                        if charted(x,y) then
+                            result[#result+1]={x=x,y=y,value=c.surface.get_pollution({x,y}),
+                                width=math.min(ox+256,(cx+1)*32)-x,height=math.min(oy+256,(cy+1)*32)-y}
+                        end
+                    end
+                end
+                return result,false
+            end)
+            local function own(types,limit,read)
+                local found=c.surface.find_entities_filtered{area=area,force=p.force,type=types,limit=limit+1}
+                local result={}
+                for i=1,math.min(#found,limit) do
+                    local e=found[i]
+                    if e.valid and inside(e.position) and visible(e.position.x,e.position.y) then read(e,result) end
+                end
+                return result,#found>limit
+            end
+            layer("electric",function()
+                return own({"electric-pole"},128,function(e,result)
+                    local lines={}
+                    local connector=e.get_wire_connector(defines.wire_connector_id.pole_copper,false)
+                    if connector then
+                        for _,wire in pairs(connector.connections) do
+                            local target=wire.target.owner
+                            if #lines<16 and target.valid and inside(target.position) and visible(target.position.x,target.position.y) then
+                                lines[#lines+1]={x=target.position.x,y=target.position.y}
+                            end
+                        end
+                    end
+                    result[#result+1]={x=e.position.x,y=e.position.y,radius=e.prototype.get_supply_area_distance(e.quality) or 0,connections=lines}
+                end)
+            end)
+            layer("logistics",function()
+                return own({"roboport"},64,function(e,result)
+                    local cell=e.logistic_cell
+                    if cell and cell.valid then
+                        result[#result+1]={x=e.position.x,y=e.position.y,logistic=cell.logistic_radius,construction=cell.construction_radius,active=cell.transmitting}
+                    end
+                end)
+            end)
+            layer("turrets",function()
+                return own({"ammo-turret","electric-turret","fluid-turret","artillery-turret"},128,function(e,result)
+                    result[#result+1]={x=e.position.x,y=e.position.y,radius=e.prototype.turret_range or 0}
+                end)
+            end)
+            layer("stations",function()
+                return own({"train-stop"},128,function(e,result)
+                    result[#result+1]={x=e.position.x,y=e.position.y,text=clean(e.backer_name)}
+                end)
+            end)
+            layer("tags",function()
+                local found=p.force.find_chart_tags(c.surface,area)
+                local result={}
+                for i=1,math.min(#found,128) do
+                    local tag=found[i]
+                    if tag.valid and inside(tag.position) and charted(tag.position.x,tag.position.y) then
+                        result[#result+1]={x=tag.position.x,y=tag.position.y,text=clean(tag.text),icon=tag.icon and clean(tag.icon.name) or ""}
+                    end
+                end
+                return result,#found>128
+            end)
             rcon.print(helpers.table_to_json({status="ok",tick=game.tick,x=c.position.x,y=c.position.y,
-                surface=c.surface.name,inventory=items,inventory_available=inv~=nil,truncated=truncated,
+                surface=c.surface.name,overlays=overlays,inventory=items,inventory_available=inv~=nil,truncated=truncated,
                 slots=slots,capacity=inv and #inv or 0,slots_truncated=inv and #inv>200 or false,
                 terrain={origin={x=ox,y=oy},step=1,rows=rows,palette=palette,entities=entities,partial=partial}}))
             """, cancellationToken);

@@ -118,7 +118,25 @@
  await builder.Build().RunAsync();
 --- a/FactorioMCP/Services/FactorioService.cs
 +++ b/FactorioMCP/Services/FactorioService.cs
-@@ -54,15 +54,133 @@
+@@ -6,7 +6,7 @@
+ /// High-level service for controlling a Factorio game instance via RCON Lua commands.
+ /// All operations execute Lua scripts through the /c console command and return
+ /// JSON-formatted output from rcon.print() for reliable AI parsing.
+-/// Split into partial class files by domain — see FactorioService.*.cs.
++/// Split into partial class files by domain â€” see FactorioService.*.cs.
+ /// </summary>
+ internal sealed partial class FactorioService(RconClient rcon)
+ {
+@@ -22,7 +22,7 @@
+     /// nearest to the query position, and filters out the player character entity.
+     /// Prevents accidentally selecting ore under a drill/furnace or selecting the
+     /// player's own character.
+-    /// Usage: <c>sort_entities(entities, qx, qy)</c> — mutates in place. qx/qy optional.
++    /// Usage: <c>sort_entities(entities, qx, qy)</c> â€” mutates in place. qx/qy optional.
+     /// </summary>
+     internal const string LuaEntitySort = """
+         local function sort_entities(t, qx, qy)
+@@ -54,15 +54,138 @@
      /// </summary>
      internal const string LuaOnTickHandler = """
          script.on_event(defines.events.on_tick, function()
@@ -130,11 +148,16 @@
 +            local active = s and not s.stopped and game.tick < s.deadline
 +                and #game.connected_players == 1 and selected and selected.index == s.player
 +                and p and p.valid and p.character and p.character.valid
++                and p.controller_type==defines.controllers.character and not p.driving
 +            if not active then
++                if p and p.character and p.character.valid then
++                    p.character.walking_state={walking=false,direction=defines.direction.north}
++                    p.character.mining_state={mining=false}
++                end
 +                local n=storage.autoengineer_nav
 +                if n and n.status=='running' then
 +                    n.status='stopped'
-+                    if p and p.valid then p.walking_state={walking=false,direction=defines.direction.north} end
++                    if p and p.valid and p.controller_type==defines.controllers.character then p.walking_state={walking=false,direction=defines.direction.north} end
 +                end
 +                local op=storage.operation
 +            if op and not op.status then
@@ -152,7 +175,7 @@
 +            end
 +                if s then s.stopped = true end
 +                if storage.walk_dir ~= nil or storage.mine_state ~= nil then
-+                    if p and p.valid then
++                    if p and p.valid and p.controller_type==defines.controllers.character then
 +                        p.walking_state = {walking=false, direction=defines.direction.north}
 +                        p.mining_state = {mining=false}
 +                    end
@@ -270,6 +293,15 @@
  /// 
  /// Design: All navigation logic runs in C#, with Lua only used for:
  ///   1. Requesting paths (async via request_path)
+@@ -27,7 +27,7 @@
+     private bool _pathHandlerInstalled;
+     private int? _lastDirection;
+ 
+-    // ── Public API ──────────────────────────────────────────────────
++    // â”€â”€ Public API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ 
+     /// <summary>
+     /// Walk to a target position using Factorio's A* pathfinder.
 @@ -38,13 +38,36 @@
          double targetX, double targetY,
          double tolerance,
@@ -309,6 +341,15 @@
  
          if (dist <= tolerance)
              return FormatResult("arrived", px, py, targetX, targetY, dist, tolerance);
+@@ -73,7 +96,7 @@
+                 return FormatResult("no_path", px, py, targetX, targetY, dist, tolerance);
+             if (status == "busy")
+             {
+-                // Pathfinder overloaded — old request already cleaned up by
++                // Pathfinder overloaded â€” old request already cleaned up by
+                 // GetPathResultAsync (non-ok entries are nil'd), just retry
+                 await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                 requestId = await RequestPathAsync(targetX, targetY, tolerance, cancellationToken);
 @@ -85,11 +108,18 @@
          if (waypoints is null || waypoints.Count == 0)
              return FormatResult("no_path", px, py, targetX, targetY, dist, tolerance);
@@ -329,7 +370,23 @@
      }
  
      /// <summary>
-@@ -110,80 +140,60 @@
+@@ -98,92 +128,74 @@
+     public Task<string> GetPlayerPositionAsync(CancellationToken cancellationToken = default)
+     {
+         return rcon.ExecuteLuaAsync("""
+-            local p = game.connected_players[1].position
++            local player=game.connected_players[1]
++            if #game.connected_players~=1 or not player or not player.character then error('single character required') end
++            local p = player.character.position
+             rcon.print('{"x":'..p.x..',"y":'..p.y..'}')
+             """, cancellationToken);
+     }
+ 
+-    // ── Waypoint Following (Segment-Vector Projection Model) ──────────
++    // â”€â”€ Waypoint Following (Segment-Vector Projection Model) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ 
+     private async Task<string> FollowWaypointsAsync(
+         List<(double x, double y)> waypoints,
          double targetX, double targetY,
          double tolerance,
          DateTime deadline,
@@ -455,7 +512,69 @@
      }
  
      /// <summary>
-@@ -438,20 +448,28 @@
+@@ -200,7 +212,7 @@
+         {
+             var t = ProjectOntoSegment(waypoints, segIndex, playerX, playerY);
+ 
+-            // Player hasn't passed the segment endpoint yet — stay on this segment
++            // Player hasn't passed the segment endpoint yet â€” stay on this segment
+             if (t < 1.0)
+                 break;
+ 
+@@ -249,7 +261,7 @@
+     /// <summary>
+     /// Project the player position onto a path segment, returning the parameter t.
+     /// t=0 means at segment start, t=1 means at segment end, t>1 means past the endpoint.
+-    /// Uses the standard vector projection formula: t = dot(player-start, end-start) / |end-start|².
++    /// Uses the standard vector projection formula: t = dot(player-start, end-start) / |end-start|Â².
+     /// </summary>
+     internal static double ProjectOntoSegment(
+         List<(double x, double y)> waypoints, int segIndex,
+@@ -275,7 +287,7 @@
+     /// Factorio 2 uses 16 directions: 0=N 2=NE 4=E 6=SE 8=S 10=SW 12=W 14=NW
+     /// (odd values are intermediate directions like NNE=1, ENE=3, etc.)
+     ///
+-    /// When <paramref name="previousDirection"/> is provided, a dead zone (~7.5°) around each
++    /// When <paramref name="previousDirection"/> is provided, a dead zone (~7.5Â°) around each
+     /// sector boundary prevents direction changes from small lateral drift. The direction only
+     /// switches when the angle moves clearly past the boundary.
+     /// </summary>
+@@ -286,7 +298,7 @@
+         var adx = Math.Abs(dx);
+         var ady = Math.Abs(dy);
+ 
+-        const double threshold = 2.414; // tan(67.5°) — standard sector boundary
++        const double threshold = 2.414; // tan(67.5Â°) â€” standard sector boundary
+ 
+         var newDirection = ComputeOctant(dx, dy, adx, ady, threshold);
+ 
+@@ -297,8 +309,8 @@
+         // Cardinal directions (N/E/S/W) use a relaxed threshold making it harder to leave cardinal.
+         // Diagonal directions (NE/SE/SW/NW) use a strict threshold making it harder to leave diagonal.
+         var hysteresisThreshold = prev % 4 == 0
+-            ? 1.732  // tan(60°) — ~7.5° dead zone keeping cardinal
+-            : 3.732; // tan(75°) — ~7.5° dead zone keeping diagonal
++            ? 1.732  // tan(60Â°) â€” ~7.5Â° dead zone keeping cardinal
++            : 3.732; // tan(75Â°) â€” ~7.5Â° dead zone keeping diagonal
+ 
+         var hysteresisDirection = ComputeOctant(dx, dy, adx, ady, hysteresisThreshold);
+         return hysteresisDirection == prev ? prev : newDirection;
+@@ -323,12 +335,12 @@
+         return dy < 0 ? 14 : 10; // NW or SW
+     }
+ 
+-    // ── Lua Commands ────────────────────────────────────────────────
++    // â”€â”€ Lua Commands â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ 
+     /// <summary>
+     /// Install the path result handler and shared on_tick handler once per session.
+     /// The on_tick handler continuously re-applies walking_state because Factorio 2
+-    /// resets it every tick — a single set only moves the player for one tick.
++    /// resets it every tick â€” a single set only moves the player for one tick.
+     /// </summary>
+     private async Task EnsurePathHandlerInstalledAsync(CancellationToken cancellationToken)
+     {
+@@ -438,20 +450,28 @@
          return ParsePosition(json);
      }
  
@@ -487,6 +606,15 @@
              storage.walk_dir = {{direction}}
              rcon.print('ok')
              """), cancellationToken);
+@@ -496,7 +516,7 @@
+         return rcon.ExecuteLuaAsync(lua.ToString(), cancellationToken);
+     }
+ 
+-    // ── Helpers ─────────────────────────────────────────────────────
++    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ 
+     internal static (double x, double y) ParsePosition(string json)
+     {
 --- a/FactorioMCP/Services/RconConnectionService.cs
 +++ b/FactorioMCP/Services/RconConnectionService.cs
 @@ -24,7 +24,7 @@
@@ -538,7 +666,7 @@
  
 --- /dev/null
 +++ b/FactorioMCP/Tools/AutoEngineerTools.cs
-@@ -0,0 +1,151 @@
+@@ -0,0 +1,232 @@
 +using FactorioMCP.Services;
 +using FactorioMCP.Rcon;
 +using ModelContextProtocol.Server;
@@ -645,8 +773,89 @@
 +                    end
 +                end
 +            end
++            -- Optional read-only overlays. No charting, connector creation or world mutation.
++            local overlays={schema=1,available={},partial={},player_name=string.sub(p.name,1,128)}
++            local area={{ox,oy},{ox+256,oy+256}}
++            local function inside(pos)
++                return pos.x>=ox and pos.x<ox+256 and pos.y>=oy and pos.y<oy+256
++            end
++            local function clean(text)
++                return string.sub(string.gsub(text or "","%c"," "),1,128)
++            end
++            local function layer(name,read)
++                local ok,result,partial=pcall(read)
++                overlays.available[name]=ok
++                overlays[name]=ok and result or {}
++                overlays.partial[name]=ok and partial==true or false
++            end
++            layer("pollution",function()
++                local result={}
++                for cy=math.floor(oy/32),math.floor((oy+255)/32) do
++                    for cx=math.floor(ox/32),math.floor((ox+255)/32) do
++                        local x,y=math.max(ox,cx*32),math.max(oy,cy*32)
++                        if charted(x,y) then
++                            result[#result+1]={x=x,y=y,value=c.surface.get_pollution({x,y}),
++                                width=math.min(ox+256,(cx+1)*32)-x,height=math.min(oy+256,(cy+1)*32)-y}
++                        end
++                    end
++                end
++                return result,false
++            end)
++            local function own(types,limit,read)
++                local found=c.surface.find_entities_filtered{area=area,force=p.force,type=types,limit=limit+1}
++                local result={}
++                for i=1,math.min(#found,limit) do
++                    local e=found[i]
++                    if e.valid and inside(e.position) and visible(e.position.x,e.position.y) then read(e,result) end
++                end
++                return result,#found>limit
++            end
++            layer("electric",function()
++                return own({"electric-pole"},128,function(e,result)
++                    local lines={}
++                    local connector=e.get_wire_connector(defines.wire_connector_id.pole_copper,false)
++                    if connector then
++                        for _,wire in pairs(connector.connections) do
++                            local target=wire.target.owner
++                            if #lines<16 and target.valid and inside(target.position) and visible(target.position.x,target.position.y) then
++                                lines[#lines+1]={x=target.position.x,y=target.position.y}
++                            end
++                        end
++                    end
++                    result[#result+1]={x=e.position.x,y=e.position.y,radius=e.prototype.get_supply_area_distance(e.quality) or 0,connections=lines}
++                end)
++            end)
++            layer("logistics",function()
++                return own({"roboport"},64,function(e,result)
++                    local cell=e.logistic_cell
++                    if cell and cell.valid then
++                        result[#result+1]={x=e.position.x,y=e.position.y,logistic=cell.logistic_radius,construction=cell.construction_radius,active=cell.transmitting}
++                    end
++                end)
++            end)
++            layer("turrets",function()
++                return own({"ammo-turret","electric-turret","fluid-turret","artillery-turret"},128,function(e,result)
++                    result[#result+1]={x=e.position.x,y=e.position.y,radius=e.prototype.turret_range or 0}
++                end)
++            end)
++            layer("stations",function()
++                return own({"train-stop"},128,function(e,result)
++                    result[#result+1]={x=e.position.x,y=e.position.y,text=clean(e.backer_name)}
++                end)
++            end)
++            layer("tags",function()
++                local found=p.force.find_chart_tags(c.surface,area)
++                local result={}
++                for i=1,math.min(#found,128) do
++                    local tag=found[i]
++                    if tag.valid and inside(tag.position) and charted(tag.position.x,tag.position.y) then
++                        result[#result+1]={x=tag.position.x,y=tag.position.y,text=clean(tag.text),icon=tag.icon and clean(tag.icon.name) or ""}
++                    end
++                end
++                return result,#found>128
++            end)
 +            rcon.print(helpers.table_to_json({status="ok",tick=game.tick,x=c.position.x,y=c.position.y,
-+                surface=c.surface.name,inventory=items,inventory_available=inv~=nil,truncated=truncated,
++                surface=c.surface.name,overlays=overlays,inventory=items,inventory_available=inv~=nil,truncated=truncated,
 +                slots=slots,capacity=inv and #inv or 0,slots_truncated=inv and #inv>200 or false,
 +                terrain={origin={x=ox,y=oy},step=1,rows=rows,palette=palette,entities=entities,partial=partial}}))
 +            """, cancellationToken);
@@ -692,7 +901,7 @@
 +}
 --- /dev/null
 +++ b/FactorioMCP/Tools/SafetyTools.cs
-@@ -0,0 +1,110 @@
+@@ -0,0 +1,117 @@
 +using System.ComponentModel;
 +using System.Text.Json;
 +using FactorioMCP.Rcon;
@@ -727,6 +936,9 @@
 +            if #game.connected_players ~= 1 or not p or not p.character or not p.character.valid then
 +                rcon.print('{"version":1,"status":"single_player_required"}') return
 +            end
++            if p.controller_type~=defines.controllers.character or p.driving then
++                rcon.print('{"version":1,"status":"character_control_required"}') return
++            end
 +            storage.walk_dir = nil
 +            storage.mine_state = nil
 +            p.walking_state = {walking=false, direction=defines.direction.north}
@@ -744,7 +956,7 @@
 +        return rcon.ExecuteLuaAsync($$"""
 +            local s = storage.autoengineer_safety
 +            local p = game.connected_players[1]
-+            if not s or s.owner ~= {{id}} or s.stopped or game.tick >= s.deadline or #game.connected_players ~= 1 or not p or p.index ~= s.player then
++            if not s or s.owner ~= {{id}} or s.stopped or game.tick >= s.deadline or #game.connected_players ~= 1 or not p or p.index ~= s.player or p.controller_type~=defines.controllers.character or p.driving then
 +                rcon.print('{"version":1,"status":"expired"}') return
 +            end
 +            s.deadline = game.tick + 120
@@ -779,7 +991,11 @@
 +                end
 +                op.status='stopped'
 +            end
-+            if p and p.valid then
++            if p and p.character and p.character.valid then
++                p.character.walking_state={walking=false,direction=defines.direction.north}
++                p.character.mining_state={mining=false}
++            end
++            if p and p.valid and p.controller_type==defines.controllers.character then
 +                p.walking_state = {walking=false, direction=defines.direction.north}
 +                p.mining_state = {mining=false}
 +                if p.walking_state.walking then
@@ -796,10 +1012,10 @@
 +        return rcon.ExecuteLuaAsync($$"""
 +            local s = storage.autoengineer_safety
 +            local p = s and game.get_player(s.player)
-+            if not s or s.owner ~= {{id}} or s.stopped or game.tick >= s.deadline or not p or not p.character or #game.connected_players ~= 1 then
++            if not s or s.owner ~= {{id}} or s.stopped or game.tick >= s.deadline or not p or not p.character or #game.connected_players ~= 1 or p.controller_type~=defines.controllers.character or p.driving then
 +                rcon.print('{"version":1,"status":"inactive"}') return
 +            end
-+            rcon.print(helpers.table_to_json({version=1,status="active",x=p.position.x,y=p.position.y,tick=game.tick,walking=p.walking_state.walking}))
++            rcon.print(helpers.table_to_json({version=1,status="active",x=p.character.position.x,y=p.character.position.y,tick=game.tick,walking=p.character.walking_state.walking}))
 +            """, cancellationToken);
 +    }
 +}

@@ -84,3 +84,7 @@ The game-style map and slot inventory stay live whenever the dashboard is open, 
 Operating modes are documented in [OPERATING_MODES.md](docs/OPERATING_MODES.md). The current mode-aware backend must be rebuilt before Semi-Autonomous sessions run.
 
 The default model is **Phi-4-mini-instruct**. Qwen2.5-Coder 7B remains supported through `llm_model` in local configuration. See [model setup and comparison](docs/MODEL_SELECTION.md) and [normal-speed movement](docs/NORMAL_MOVEMENT.md). Rebuild the policy-v7 backend before using this version.
+
+## Windows launcher preview
+
+The experimental Windows release includes AutoEngineer.exe, its required worker and bundled Python runtime. Follow [launcher setup](docs/LAUNCHER.md); Factorio, the local model and the rebuilt restricted backend are separate prerequisites. See [map controls and telemetry bounds](docs/MAP_TELEMETRY.md).

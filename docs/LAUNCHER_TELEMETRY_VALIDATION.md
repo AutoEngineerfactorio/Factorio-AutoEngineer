@@ -1,0 +1,15 @@
+# Launcher and telemetry validation — October 18, 2026
+
+Tested on Windows with Factorio 2.0.77, the existing reusable isolated save, Python 3.12.10 and PyInstaller 6.22.3. No main save or license change was involved.
+
+- All 151 Python/offline regression tests passed, including exact Lua tick-handler tests and remote/vehicle cancellation coverage.
+- The complete backend patch applied to clean pinned upstream f2fca61707efe3107e7a3738bb83d1505b0126f7 and built with zero compiler errors/warnings. NuGet audit was disabled for this clean compile because the audit endpoint was unreachable; this is not a fresh vulnerability audit. The dependency lockfile was retained.
+- Source and final frozen workers reached live Helper readiness and verified policy 7 with twelve tools and a five-tile maximum.
+- Real telemetry returned all six optional overlay layers. Temporary fixtures produced two electric poles with copper connections, one roboport with positive logistics/construction radii, a turret with positive nominal range, a named station and a chart tag; pollution returned 81 bounded charted cells. Parser roundtrip and empty Lua-table handling passed. Fixtures were removed; sampled pollution was restored.
+- Tk rendered every overlay, menu availability, an 80-slot inventory, zoom and follow-player controls without errors.
+- The final packaged Reject left position unchanged. The approved in-motion Stop moved 0.296875 tiles before stopping, confirmed game-side Stop and had zero subsequent drift. Observed Stop-to-worker-exit was about 0.43 seconds, including sampling overhead; this is not a real-time guarantee. Game speed stayed 1 and running-speed modifier stayed 0.
+- Model termination was detected without killing the existing attached game. The test save was explicitly saved and ZIP integrity checked. Attached processes stayed open; only owned workers/model were stopped.
+- Remote view refused a new gameplay lease, position reads matched the physical character, entering remote view during movement revoked walking and no drift followed. The original remote camera view was restored after testing.
+- Earlier launcher qualification covered cold start, duplicate-start prevention, profile locking, port collisions, queued-start cancellation, preserved attached services, Emergency Stop and verified saving before owned shutdown. The GUI buttons were exercised before the cosmetic reskin; final frozen components and rendering were rechecked afterward.
+
+The release is an unsigned Windows x64 one-folder preview. It bundles Python and original project UI, not Factorio assets, weights, saves, credentials or upstream backend binaries. A private isolated profile and separately installed prerequisites are required. Full Autonomy, full setup wizard, remote building/train commands, distant map browsing and clean-PC installer certification remain incomplete. The map is bounded to the current local surface window; turret range is nominal. Space Age is vanilla and third-party mods remain last.

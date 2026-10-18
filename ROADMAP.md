@@ -61,7 +61,7 @@ Completed work retains its documented scope. All new acceptance requirements rem
 - [ ] Supervised single-block self-expansion: demand deficit, feasible design, approval, legitimate ghosts, real train/bot material supply, physical construction and measured production
 - [ ] Expansion checkpoints and bounded recovery: no duplicate blocks after restart/retry, no phantom materials, protected player structures and explicit demolition approval
 - [ ] Engineering dashboard workspace: tech/recipe explorer, item/fluid/equipment views, production/power graphs, blueprint previews, train/bot overlays, threats, job queues and observed-versus-estimated values
-- [ ] Attach/health/configuration foundation for existing services, without duplicate starts or stopping user-owned processes; full executable packaging remains Phase 5
+- [x] Attach/health/configuration foundation for existing services, without duplicate starts or stopping user-owned processes; full executable packaging remains Phase 5
 - [ ] Chart/fog and stale-state acceptance tests across every observation adapter, beyond the completed bounded dashboard map
 
 - [ ] Runtime capability registry: version, enabled expansions, research, surface, quality and charted observation rights
@@ -156,3 +156,8 @@ Repository Phases 0-6 are the canonical delivery order. G0-G9 are acceptance gat
 Historical starter documents, old tool counts and pending-license/setup claims do not override published implementation status. Compatibility catalogs are research candidates until primary-source checks and capability tests pass. New requirements above are unchecked; completed starter operations and bounded dashboard milestones retain their documented limits.
 
 Three-mode permission enforcement and the locked Full choice are tested; [mode behavior and validation](docs/OPERATING_MODES.md). Helper recipe/blueprint planning and full takeover arbitration remain separate unchecked work.
+
+### Launcher and map preview (October 18, 2026)
+- [x] Local Windows one-folder launcher prototype: start/attach readiness, process ownership, profile validation, collision checks, cancellation, service health and verified owned shutdown. See [scope and setup](docs/LAUNCHER.md). Full public installer remains Phase 5.
+- [x] Read-only local map overlays: pollution, electric supply/connections, logistics/construction coverage, nominal turret range, station names and force tags; tested with temporary fixtures. See [bounds and evidence](docs/MAP_TELEMETRY.md).
+- [ ] Extend map browsing beyond the local window, surface selection and search; remote commands require separate mode-aware validation.

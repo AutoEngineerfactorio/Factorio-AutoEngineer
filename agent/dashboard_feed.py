@@ -96,8 +96,54 @@ def display_details(raw):
         seen.add(i)
         if type(v.get('count')) is not int or not 1 <= v['count'] <= 10**12: raise ValueError('Invalid stack count')
         slots.append(dict(slot=i,name=label(v.get('name')),quality=label(v.get('quality')),count=v['count']))
-    return dict(terrain=dict(origin=origin,step=t['step'],tiles=tiles,entities=entities,partial=t['partial'],**raster),
+    return dict(terrain=dict(origin=origin,step=t['step'],tiles=tiles,entities=entities,partial=t['partial'],**raster,**overlay_details(dict(raw,overlays=t['overlays']) if 'overlays' in t else raw,origin)),
                 slots=slots,capacity=capacity,slots_truncated=raw['slots_truncated'])
+
+
+def overlay_details(raw,origin):
+    """Validate optional overlays on both sides of the display process boundary."""
+    if 'overlays' not in raw:return {}
+    value=raw['overlays']
+    names={'pollution':81,'electric':128,'logistics':64,'turrets':128,'stations':128,'tags':128}
+    if not isinstance(value,dict) or type(value.get('schema')) is not int or value['schema']!=1:
+        raise ValueError('Invalid overlay schema')
+    out=dict(schema=1,available={},partial={},player_name=label(value.get('player_name')))
+    def pos(v):
+        p=point(v)
+        if not all(origin[k]<=p[k]<origin[k]+256 for k in ('x','y')):raise ValueError('Overlay outside chart window')
+        return p
+    def number(v,key,maximum):
+        n=v.get(key)
+        if type(n) not in (int,float) or not math.isfinite(n) or not 0<=n<=maximum:raise ValueError('Invalid overlay value')
+        return n
+    def text(v):
+        if v=='':return ''
+        return label(v)
+    for name,limit in names.items():
+        for flag in ('available','partial'):
+            flags=value.get(flag)
+            if not isinstance(flags,dict) or type(flags.get(name)) is not bool:raise ValueError('Invalid overlay availability')
+            out[flag][name]=flags[name]
+        entries=bounded_list(value.get(name),limit)
+        if not out['available'][name] and entries:raise ValueError('Unavailable overlay has data')
+        out[name]=[]
+        for v in entries:
+            p=pos(v)
+            if name=='pollution':
+                p.update(value=number(v,'value',1e15),width=number(v,'width',32),height=number(v,'height',32))
+                if any(p[k]+p[size]>origin[k]+256 for k,size in [('x','width'),('y','height')]):raise ValueError('Pollution cell outside window')
+            elif name in ('electric','turrets'):
+                p['radius']=number(v,'radius',2048)
+                if name=='electric':p['connections']=[pos(q) for q in bounded_list(v.get('connections'),16)]
+            elif name=='logistics':
+                p.update(logistic=number(v,'logistic',2048),construction=number(v,'construction',2048))
+                if type(v.get('active')) is not bool:raise ValueError('Invalid logistics state')
+                p['active']=v['active']
+            else:
+                p['text']=text(v.get('text'))
+                if name=='tags':p['icon']=text(v.get('icon'))
+            out[name].append(p)
+    return {'overlays':out}
 
 
 class DashboardFeed:
