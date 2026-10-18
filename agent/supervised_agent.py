@@ -47,7 +47,9 @@ async def read_tool(session, name, args=None):
 
 
 def ask_ai(observation, history):
-    choices = movement_choices(observation)
+    choices = movement_choices(observation, history)
+    if not choices:
+        return {"action": "stop", "x": None, "y": None, "reason": "No untried short waypoints remain"}
     payload = {
         "model": get_settings()["llm_model"],
         "temperature": 0.2,
@@ -248,7 +250,21 @@ async def run_cycles(session, control, owner):
         })
 
         if not success:
-            print("Verification failed; stopping loop.")
+            if outcome.get("status") in {"no_path", "stuck", "timeout"}:
+                # Completed backend route calls clear walking before returning.
+                # Confirm a stationary position before any fresh proposal; a
+                # failed observation, transport error or cancellation ends safely.
+                await asyncio.sleep(0.1)
+                stationary = await read_tool(session, "get_player_position")
+                if math.dist((final["x"], final["y"]),
+                             (stationary["x"], stationary["y"])) <= 0.01:
+                    if control.stop.is_set():
+                        raise StopRequested()
+                    print("Route blocked; excluding this destination. A new movement requires fresh approval.")
+                    continue
+                print("Player still moving after route failure; stopping loop.")
+            else:
+                print("Verification failed; stopping loop.")
             break
 
 
