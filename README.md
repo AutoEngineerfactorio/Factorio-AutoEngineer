@@ -73,10 +73,12 @@ Original Factorio-AutoEngineer code and documentation are licensed under the [MI
 
 Factorio is developed by Wube Software. Factorio AutoEngineer is an independent community project and is not affiliated with or endorsed by Wube Software.
 
-The [live dashboard](docs/LIVE_DASHBOARD.md) displays a read-only observed map and main inventory during supervised sessions. It requires the current policy-v5 backend patch and rebuild.
+The [live dashboard](docs/LIVE_DASHBOARD.md) displays a read-only observed map and main inventory during supervised sessions. It requires the current policy-v6 backend patch and rebuild.
 
 [Verified starter mining and crafting](docs/VERIFIED_OPERATIONS.md) is available through the dashboard, with batch limits, preflight checks, inventory verification and owned-operation stopping.
 
 Detailed future work: [reconciled handoff](docs/WORK_HANDOFF_2026-10-18.md) and [full-autonomy gap audit](docs/FULL_AUTONOMY_GAP_AUDIT_2026-10-18.md). Research candidates are not verified compatibility claims.
 
 The game-style map and slot inventory stay live whenever the dashboard is open, independently of the AI. Rebuild the current backend patch; see [display setup](docs/LIVE_DASHBOARD.md) and [validation](docs/DASHBOARD_MAP_VALIDATION.md).
+
+Operating modes are documented in [OPERATING_MODES.md](docs/OPERATING_MODES.md). The current mode-aware backend must be rebuilt before Semi-Autonomous sessions run.
