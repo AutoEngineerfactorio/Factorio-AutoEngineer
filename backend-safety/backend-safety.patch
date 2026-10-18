@@ -1,0 +1,218 @@
+--- a/FactorioMCP/Services/FactorioService.cs
++++ b/FactorioMCP/Services/FactorioService.cs
+@@ -54,15 +54,31 @@
+     /// </summary>
+     internal const string LuaOnTickHandler = """
+         script.on_event(defines.events.on_tick, function()
+-            local p = game.connected_players[1]
+-            if not p then return end
++            local s = storage.autoengineer_safety
++            local p = s and game.get_player(s.player) or game.connected_players[1]
++            local selected = game.connected_players[1]
++            local active = s and not s.stopped and game.tick < s.deadline
++                and #game.connected_players == 1 and selected and selected.index == s.player
++                and p and p.valid and p.character and p.character.valid
++            if not active then
++                if s then s.stopped = true end
++                if storage.walk_dir ~= nil or storage.mine_state ~= nil then
++                    if p and p.valid then
++                        p.walking_state = {walking=false, direction=defines.direction.north}
++                        p.mining_state = {mining=false}
++                    end
++                end
++                storage.walk_dir = nil
++                storage.mine_state = nil
++                return
++            end
+             local d = storage.walk_dir
+-            if d ~= nil and p.character and p.character.valid then
+-                p.walking_state = {walking = true, direction = d}
++            if d ~= nil then
++                p.walking_state = {walking=true, direction=d}
+             end
+             if storage.mine_state then
+                 p.update_selected_entity(storage.mine_state.position)
+-                p.mining_state = {mining = true, position = storage.mine_state.position}
++                p.mining_state = {mining=true, position=storage.mine_state.position}
+             end
+         end)
+         """;
+--- a/FactorioMCP/Services/PathfindingService.cs
++++ b/FactorioMCP/Services/PathfindingService.cs
+@@ -38,8 +38,27 @@
+         double targetX, double targetY,
+         double tolerance,
+         double timeoutSeconds,
+-        CancellationToken cancellationToken = default)
+-    {
++        CancellationToken cancellationToken = default,
++        string? expectedOwner = null)
++    {
++        // Capture the owning lease before requesting any path. An old walk may
++        // never borrow a later session's lease after cancellation or reconnect.
++        var safetyJson = await rcon.ExecuteLuaAsync("""
++            local s = storage.autoengineer_safety
++            if not s or s.stopped or game.tick >= s.deadline then
++                rcon.print('{}') return
++            end
++            rcon.print('{"owner":"'..s.owner..'"}')
++            """, cancellationToken);
++        using var safetyDocument = JsonDocument.Parse(safetyJson);
++        if (!safetyDocument.RootElement.TryGetProperty("owner", out var ownerElement))
++            throw new InvalidOperationException("Active AutoEngineer safety lease required");
++        var safetyOwner = ownerElement.GetString()!;
++        if (!Guid.TryParseExact(safetyOwner, "N", out _))
++            throw new InvalidOperationException("Invalid safety lease owner");
++        if (expectedOwner is null || safetyOwner != expectedOwner)
++            throw new InvalidOperationException("Movement lease owner mismatch");
++
+         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(Math.Max(timeoutSeconds, 0.5));
+ 
+         // Check if already at target
+@@ -89,7 +108,7 @@
+         await DrawPathAsync(waypoints, tolerance, cancellationToken);
+ 
+         // Follow waypoints from C#
+-        return await FollowWaypointsAsync(waypoints, targetX, targetY, tolerance, deadline, cancellationToken);
++        return await FollowWaypointsAsync(waypoints, targetX, targetY, tolerance, deadline, safetyOwner, cancellationToken);
+     }
+ 
+     /// <summary>
+@@ -110,6 +129,7 @@
+         double targetX, double targetY,
+         double tolerance,
+         DateTime deadline,
++        string safetyOwner,
+         CancellationToken cancellationToken)
+     {
+         // Segment index: player walks from waypoints[segIndex] toward waypoints[segIndex+1].
+@@ -168,7 +188,7 @@
+                 var (wpx, wpy) = waypoints[segIndex + 1];
+                 var direction = CalculateDirection(px, py, wpx, wpy, _lastDirection);
+                 if (_lastDirection != direction)
+-                    await SetWalkingDirectionAsync(direction, cancellationToken);
++                    await SetWalkingDirectionAsync(direction, safetyOwner, cancellationToken);
+ 
+                 await Task.Delay(PollInterval, cancellationToken);
+             }
+@@ -448,10 +468,14 @@
+             """, cancellationToken);
+     }
+ 
+-    private async Task SetWalkingDirectionAsync(int direction, CancellationToken cancellationToken)
++    private async Task SetWalkingDirectionAsync(int direction, string safetyOwner, CancellationToken cancellationToken)
+     {
+         _lastDirection = direction;
+         await rcon.ExecuteLuaAsync(string.Create(CultureInfo.InvariantCulture, $$"""
++            local s = storage.autoengineer_safety
++            if not s or s.stopped or game.tick >= s.deadline or s.owner ~= "{{safetyOwner}}" then
++                rcon.print('lease_inactive') return
++            end
+             storage.walk_dir = {{direction}}
+             rcon.print('ok')
+             """), cancellationToken);
+--- a/FactorioMCP/Tools/MovementTools.cs
++++ b/FactorioMCP/Tools/MovementTools.cs
+@@ -21,6 +21,8 @@
+         double targetX,
+         [Description("Target Y coordinate to walk toward")]
+         double targetY,
++        [Description("Owning AutoEngineer safety lease identifier")]
++        string safetyOwner,
+         [Description("Distance tolerance — arrived when within this many tiles of the target (default 2.0)")]
+         double tolerance = 2.0,
+         [Description("Maximum time to walk in seconds before giving up (default 30)")]
+@@ -28,7 +30,7 @@
+         CancellationToken cancellationToken = default)
+     {
+         return queue.ExecuteAsync(nameof(WalkToPosition), ct =>
+-            pathfinding.WalkToAsync(targetX, targetY, tolerance, timeoutSeconds, ct),
++            pathfinding.WalkToAsync(targetX, targetY, tolerance, timeoutSeconds, ct, safetyOwner),
+             cancellationToken);
+     }
+ 
+--- /dev/null
++++ b/FactorioMCP/Tools/SafetyTools.cs
+@@ -0,0 +1,82 @@
++using System.ComponentModel;
++using System.Text.Json;
++using FactorioMCP.Rcon;
++using FactorioMCP.Services;
++using ModelContextProtocol.Server;
++
++namespace FactorioMCP.Tools;
++
++// Safety calls bypass GameCommandQueue so a queued walk cannot delay a stop.
++// The RCON client's own connection lock still applies; expiry handles transport loss.
++[McpServerToolType]
++internal sealed class SafetyTools(RconClient rcon)
++{
++    private static string Owner(string owner)
++    {
++        if (!Guid.TryParseExact(owner, "N", out _))
++            throw new ArgumentException("Invalid safety session identifier");
++        return JsonSerializer.Serialize(owner);
++    }
++
++    [McpServerTool(Name = "autoengineer_arm"), Description("Arm a short movement lease for a supervised AutoEngineer session.")]
++    public Task<string> Arm(string owner, CancellationToken cancellationToken = default)
++    {
++        var id = Owner(owner);
++        return rcon.ExecuteLuaAsync(FactorioService.LuaOnTickHandler + $$"""
++
++            local old = storage.autoengineer_safety
++            if old and not old.stopped and game.tick < old.deadline and old.owner ~= {{id}} then
++                rcon.print('{"version":1,"status":"busy"}') return
++            end
++            local p = game.connected_players[1]
++            if #game.connected_players ~= 1 or not p or not p.character or not p.character.valid then
++                rcon.print('{"version":1,"status":"single_player_required"}') return
++            end
++            storage.walk_dir = nil
++            storage.mine_state = nil
++            p.walking_state = {walking=false, direction=defines.direction.north}
++            p.mining_state = {mining=false}
++            storage.autoengineer_safety = {owner={{id}}, player=p.index, deadline=game.tick+120, stopped=false}
++            rcon.print('{"version":1,"status":"active"}')
++            """, cancellationToken);
++    }
++
++    [McpServerTool(Name = "autoengineer_renew"), Description("Renew an unexpired AutoEngineer movement lease; never revive a stopped lease.")]
++    public Task<string> Renew(string owner, CancellationToken cancellationToken = default)
++    {
++        var id = Owner(owner);
++        return rcon.ExecuteLuaAsync($$"""
++            local s = storage.autoengineer_safety
++            local p = game.connected_players[1]
++            if not s or s.owner ~= {{id}} or s.stopped or game.tick >= s.deadline or #game.connected_players ~= 1 or not p or p.index ~= s.player then
++                rcon.print('{"version":1,"status":"expired"}') return
++            end
++            s.deadline = game.tick + 120
++            rcon.print('{"version":1,"status":"active"}')
++            """, cancellationToken);
++    }
++
++    [McpServerTool(Name = "autoengineer_stop"), Description("Latch stop and clear game-side walking/mining for the owning AutoEngineer session.")]
++    public Task<string> Stop(string owner, CancellationToken cancellationToken = default)
++    {
++        var id = Owner(owner);
++        return rcon.ExecuteLuaAsync($$"""
++            local s = storage.autoengineer_safety
++            if not s or s.owner ~= {{id}} then
++                rcon.print('{"version":1,"status":"not_owner"}') return
++            end
++            s.stopped = true
++            storage.walk_dir = nil
++            storage.mine_state = nil
++            local p = game.get_player(s.player)
++            if p and p.valid then
++                p.walking_state = {walking=false, direction=defines.direction.north}
++                p.mining_state = {mining=false}
++                if p.walking_state.walking then
++                    rcon.print('{"version":1,"status":"unconfirmed"}') return
++                end
++            end
++            rcon.print('{"version":1,"status":"stopped","walking":false}')
++            """, cancellationToken);
++    }
++}

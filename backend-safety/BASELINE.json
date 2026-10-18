@@ -1,0 +1,14 @@
+[
+  {
+    "file": "FactorioMCP/Services/FactorioService.cs",
+    "original_sha256": "3193b73eaa3f5aae89a8831b40e0ac8d32b4aa9b29622eacce2eaae5580cd5bf"
+  },
+  {
+    "file": "FactorioMCP/Services/PathfindingService.cs",
+    "original_sha256": "0ef9b339907ee1c4ea03802de7274979d8aaaa90f8f1373ca1e3c0f3088083cb"
+  },
+  {
+    "file": "FactorioMCP/Tools/MovementTools.cs",
+    "original_sha256": "94a98a08c61abcc3610dc279cd47e0c42d3dadc2935a08527c748236bd3b97f2"
+  }
+]
