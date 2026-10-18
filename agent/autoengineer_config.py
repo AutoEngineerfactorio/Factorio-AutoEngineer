@@ -1,4 +1,5 @@
 """Local configuration only; importing this module never launches services."""
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -38,6 +39,13 @@ def get_settings():
     url = urlsplit(settings["llm_api_url"])
     if url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password or url.query or url.fragment:
         raise ValueError("llm_api_url must be an HTTP(S) base URL without credentials, query, or fragment")
+    for host in (settings["rcon_host"], url.hostname):
+        if host != "localhost":
+            try:
+                if not ipaddress.ip_address(host).is_loopback:
+                    raise ValueError()
+            except ValueError:
+                raise ValueError("Only loopback RCON and model endpoints are supported") from None
     settings["llm_api_url"] = settings["llm_api_url"].rstrip("/")
     return settings
 
@@ -57,7 +65,9 @@ def mcp_parameters():
     if command is None:
         raise FileNotFoundError("Configured dotnet command is unavailable; install the required runtime or configure its location")
     from mcp import StdioServerParameters
-    env = dict(os.environ)
+    # The backend receives no cloud keys, model settings or parent config path.
+    keep = {"SYSTEMROOT", "WINDIR", "COMSPEC", "PATH", "PATHEXT", "TEMP", "TMP", "DOTNET_ROOT"}
+    env = {k: v for k, v in os.environ.items() if k.upper() in keep}
     env.update({
         "FACTORIO_RCON_HOST": settings["rcon_host"],
         "FACTORIO_RCON_PORT": str(settings["rcon_port"]),
@@ -65,4 +75,8 @@ def mcp_parameters():
         "Logging__LogLevel__Default": "None",
         "Logging__LogLevel__Microsoft": "None",
     })
-    return StdioServerParameters(command=command, args=[str(dll.resolve())], env=env)
+    runtime = PROJECT_ROOT / ".local/backend"
+    runtime.mkdir(parents=True, exist_ok=True)
+    env["FACTORIO_GOALS_FILE"] = str(runtime / "goals.json")
+    env["FACTORIO_BUILDINGS_FILE"] = str(runtime / "buildings.json")
+    return StdioServerParameters(command=command, args=[str(dll.resolve())], env=env, cwd=str(runtime))

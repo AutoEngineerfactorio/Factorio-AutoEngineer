@@ -3,6 +3,7 @@ import asyncio
 import json
 import threading
 import uuid
+from agent_events import emit
 
 PROMPT = "Execute this movement? [y/N/q]: "
 SAFETY_VERSION = 1
@@ -161,6 +162,7 @@ class SafetySession:
                 raise RuntimeError("Safety heartbeat ended unexpectedly")
             return await worker
         finally:
+            emit("stop_requested")
             self.control.stop.set()  # Latch before cancelling: no later approval/dispatch.
             for task in tasks:
                 task.cancel()
@@ -172,10 +174,13 @@ class SafetySession:
                         self.confirm_stop(), timeout=self.call_timeout
                     ))
                     if reply.get("status") == "stopped" and reply.get("walking") is False:
+                        emit("stop_confirmed")
                         print("SAFETY_STOP_CONFIRMED", flush=True)
                     else:
+                        emit("stop_unconfirmed")
                         print("SAFETY_STOP_UNCONFIRMED: game-side stop was not acknowledged", flush=True)
                 except (Exception, asyncio.CancelledError):
+                    emit("stop_unconfirmed")
                     print("SAFETY_STOP_UNCONFIRMED: relying on game-side lease expiry", flush=True)
             if tasks:
                 done, pending = await asyncio.wait(tasks, timeout=self.call_timeout)
