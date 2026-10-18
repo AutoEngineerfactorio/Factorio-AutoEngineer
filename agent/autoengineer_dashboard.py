@@ -18,6 +18,7 @@ from navigation_objective import Objective
 from dashboard_feed import PREFIX, parse_frame
 from dashboard_view import LiveView
 from verified_operations import validate_operation
+from mode_policy import HELPER, SEMI, FULL, LABELS
 
 AGENT = Path(__file__).resolve().parent / "supervised_agent.py"
 
@@ -27,6 +28,9 @@ class Dashboard:
         root.title("Factorio AutoEngineer | Supervised Control")
         root.geometry("1200x820")
         root.minsize(1050, 720)
+        self.current_mode = HELPER
+        self.mode = tk.StringVar(value='AI Helper')
+        self.mode_note = tk.StringVar(value='AI Helper: live observation only. Recipe and blueprint planning are future work.')
         self.proc = None
         self.observer = None
         self.q = queue.Queue()
@@ -44,6 +48,7 @@ class Dashboard:
         self.cycle = tk.StringVar(value="-")
         self.verification = tk.StringVar(value="-")
         self.build_ui()
+        self.sync_mode_controls()
         self.root.after(80, self.process_events)
         self.root.after(100, self.start_observer)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -53,6 +58,12 @@ class Dashboard:
         header.pack(fill="x")
         ttk.Label(header, text="FACTORIO AUTOENGINEER", font=("Segoe UI", 18, "bold")).pack(anchor="w")
         ttk.Label(header, text="Supervised agent - approval required for every action").pack(anchor="w", pady=(3, 0))
+        modes=ttk.Frame(self.root,padding=(18,0,18,6));modes.pack(fill='x')
+        ttk.Label(modes,text='Operating mode:').pack(side='left')
+        self.mode_selector=ttk.Combobox(modes,textvariable=self.mode,values=list(LABELS),state='readonly',width=28)
+        self.mode_selector.pack(side='left',padx=8)
+        self.mode_selector.bind('<<ComboboxSelected>>',self.change_mode)
+        ttk.Label(modes,textvariable=self.mode_note,wraplength=650).pack(side='left')
         stats = ttk.Frame(self.root, padding=(18, 4))
         stats.pack(fill="x")
         for title, var in (("STATUS", self.status), ("CYCLE", self.cycle), ("PLAYER POSITION", self.position), ("LAST VERIFICATION", self.verification)):
@@ -99,6 +110,40 @@ class Dashboard:
         footer.pack(fill="x")
         ttk.Label(footer, text="Actions require approval. Stop clears movement, mining and unfinished agent-owned crafts.").pack(side="left")
         ttk.Button(footer, text="Clear log", command=self.clear_log).pack(side="right")
+
+    def sync_mode_controls(self):
+        semi=self.current_mode==SEMI
+        if semi:
+            if not self.start_button.winfo_manager():self.start_button.pack(side='left',before=self.approve_button,padx=(0,10))
+            self.start_button.configure(state='normal' if self.proc is None and not self.closing else 'disabled')
+        else:
+            self.start_button.configure(state='disabled')
+            self.start_button.pack_forget()
+        if not semi:self.set_approval(False)
+
+    def change_mode(self,event=None):
+        requested=LABELS.get(self.mode.get())
+        old_label=next(k for k,v in LABELS.items() if v==self.current_mode)
+        if requested==FULL or requested is None:
+            self.mode.set(old_label)
+            messagebox.showinfo('Mode locked','Fully Autonomous is locked until acceptance tests pass.')
+            return
+        if requested==self.current_mode:return
+        if requested==SEMI:
+            if self.proc is not None or (self.stop_requested and not self.stop_confirmed):
+                self.mode.set(old_label)
+                messagebox.showinfo('Wait for safe stop','Wait for game-side stop acknowledgement before starting a new gameplay session.')
+                return
+            if not messagebox.askyesno('Enable supervised gameplay?','Semi-Autonomous permits approved movement, mining and crafting. Every action still requires approval. Enable it?'):
+                self.mode.set(old_label);return
+        self.current_mode=requested
+        self.display_markers={}
+        self.set_approval(False)
+        if requested==HELPER:
+            self.mode_note.set('AI Helper: live observation only. Recipe and blueprint planning are future work.')
+            if self.proc is not None:self.stop()
+        else:self.mode_note.set('Semi-Autonomous: fresh approval per action; five-tile limit; Stop always available.')
+        self.sync_mode_controls()
 
     def display_frame(self, value):
         try:
@@ -160,6 +205,7 @@ class Dashboard:
         self.log.configure(state="disabled")
 
     def set_approval(self, enabled):
+        enabled = enabled and self.current_mode == SEMI and not self.stop_requested
         self.waiting_for_approval = enabled
         state = "normal" if enabled else "disabled"
         self.approve_button.configure(state=state)
@@ -168,7 +214,7 @@ class Dashboard:
             self.status.set("Awaiting your approval")
 
     def start(self):
-        if self.closing or self.proc is not None:
+        if self.closing or self.proc is not None or self.current_mode != SEMI:
             return
         selected_objective = self.objective.get().strip()
         mode = self.task.get() if hasattr(self, 'task') else 'Navigate'
@@ -179,6 +225,7 @@ class Dashboard:
                 messagebox.showerror('Invalid objective', str(exc))
                 return
         child_env = dict(os.environ)
+        child_env['AUTOENGINEER_MODE'] = SEMI
         child_env.pop('AUTOENGINEER_OPERATION', None)
         child_env.pop('AUTOENGINEER_OBJECTIVE', None)
         if selected_objective:
@@ -279,7 +326,7 @@ class Dashboard:
                     self.append(value)
                     self.inspect_line(value)
                 elif kind == "prompt":
-                    if not self.stop_requested:
+                    if not self.stop_requested and self.current_mode == SEMI:
                         self.set_approval(True)
                 elif kind == "exit":
                     self.set_approval(False)
@@ -291,6 +338,7 @@ class Dashboard:
                         self.status.set("Exited; game-side stop unconfirmed")
                     self.append(f"\n[Agent process exited with code {value}]\n")
                     self.proc = None
+                    if hasattr(self,'mode_selector'):self.sync_mode_controls()
                     if self.closing:
                         self.close_display()
                         return
@@ -326,7 +374,7 @@ class Dashboard:
 
     def answer(self, choice):
         p = self.proc
-        if self.stop_requested or not self.waiting_for_approval or not p or p.poll() is not None:
+        if self.current_mode != SEMI or self.stop_requested or not self.waiting_for_approval or not p or p.poll() is not None:
             return
         self.set_approval(False)
         try:

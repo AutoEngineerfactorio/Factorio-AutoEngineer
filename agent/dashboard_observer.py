@@ -1,6 +1,7 @@
 """Independent read-only telemetry. Never arms a lease or dispatches an action."""
 import asyncio
 import json
+import os
 import sys
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
@@ -37,6 +38,7 @@ async def observe(session, control, interval=2):
 
 
 async def main():
+    os.environ['AUTOENGINEER_MODE'] = 'helper'
     control = ConsoleControl()
     control.start_reader(sys.stdin)
     while not control.stop.is_set():

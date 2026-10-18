@@ -4,6 +4,7 @@ import json
 import math
 from types import MappingProxyType
 from verified_operations import validate_operation
+from mode_policy import ModePolicy, SEMI
 
 ALLOWED = {
     "autoengineer_operation_preview": {"kind", "name", "count"},
@@ -17,7 +18,8 @@ ALLOWED = {
 
 
 class DispatchBoundary:
-    def __init__(self, session, control=None):
+    def __init__(self, session, control=None, policy=None):
+        self.policy = policy if policy is not None else ModePolicy()
         self.session = session
         self.control = control
         self._permit = None
@@ -35,10 +37,11 @@ class DispatchBoundary:
         for item in response.content:
             if item.type == 'text':
                 data = json.loads(item.text)
-        if response.is_error or data != {"version": 5, "max_walk": 5, "restricted": True}:
+        if response.is_error or data != {"version": 6, "max_walk": 5, "restricted": True, "mode": self.policy.mode}:
             raise RuntimeError("Restricted backend policy mismatch")
 
     def approve(self, arguments, answer, tool='walk_to_position'):
+        self.policy.authorize(tool)
         if answer != 'y' or (self.control and self.control.stop.is_set()):
             raise PermissionError("Fresh human approval required")
         self._permit = MappingProxyType(dict(arguments))
@@ -48,6 +51,7 @@ class DispatchBoundary:
         args = dict(arguments or {})
         if name not in ALLOWED or set(args) - ALLOWED[name]:
             raise PermissionError("Tool or argument denied by dispatch boundary")
+        self.policy.authorize(name)
         if name in {'walk_to_position', 'autoengineer_operation'}:
             permit, self._permit = self._permit, None
             permit_tool, self._permit_tool = self._permit_tool, None

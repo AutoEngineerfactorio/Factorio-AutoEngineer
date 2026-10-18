@@ -1,4 +1,5 @@
 """Local configuration only; importing this module never launches services."""
+from mode_policy import load_mode
 import ipaddress
 import json
 import os
@@ -52,6 +53,7 @@ def get_settings():
 
 def mcp_parameters():
     """Fail before backend launch if credentials or prerequisites are missing."""
+    policy = load_mode()
     settings = get_settings()
     password = os.environ.get("FACTORIO_RCON_PASSWORD")
     if not password or not password.strip():
@@ -70,6 +72,7 @@ def mcp_parameters():
     env = {k: v for k, v in os.environ.items() if k.upper() in keep}
     env.update({
         "FACTORIO_RCON_HOST": settings["rcon_host"],
+        "AUTOENGINEER_BACKEND_MODE": policy.mode,
         "FACTORIO_RCON_PORT": str(settings["rcon_port"]),
         "FACTORIO_RCON_PASSWORD": password,
         "Logging__LogLevel__Default": "None",

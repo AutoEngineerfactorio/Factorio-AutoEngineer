@@ -15,6 +15,7 @@ from movement_proposals import movement_choices, proposal_messages, resolve_choi
 from movement_watchdog import monitored_walk
 from agent_events import emit
 from dispatch_boundary import DispatchBoundary
+from mode_policy import load_mode, SEMI
 from exploration_memory import load_memory
 from navigation_objective import load_objective
 from resource_discovery import ResourceDiscovery
@@ -127,9 +128,10 @@ def validate(decision, position):
     }
 
 
-async def run_cycles(session, control, owner, feed=None):
+async def run_cycles(session, control, owner, feed=None, policy=None):
     if not isinstance(session, DispatchBoundary):
-        session = DispatchBoundary(session, control)
+        session = DispatchBoundary(session, control, policy if policy is not None else load_mode())
+    session.policy.authorize('walk_to_position')
     history = []
     attempted = []
     memory = load_memory()
@@ -343,6 +345,10 @@ async def run_cycles(session, control, owner, feed=None):
 
 
 async def main():
+    policy = load_mode()
+    if policy.mode != SEMI:
+        print('AI Helper: observation only; use the dashboard live view. No gameplay session started.',flush=True)
+        return
     params = mcp_parameters()
     emit("session_start")
     control = ConsoleControl()
@@ -356,7 +362,7 @@ async def main():
         async with stdio_client(params) as (read, write):
             async with ClientSession(read, write) as session:
                 await asyncio.wait_for(session.initialize(), timeout=10)
-                session = DispatchBoundary(session, control)
+                session = DispatchBoundary(session, control, policy)
                 await session.verify()
                 emit("policy_verified")
                 try:
