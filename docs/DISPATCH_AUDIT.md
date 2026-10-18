@@ -2,12 +2,14 @@
 
 ## Scope
 
-Reviewed the ten exposed implementations, their queued and direct RCON paths, argument handling, lease ownership, cancellation, and startup behavior. The legacy public tool-method inventory is in `UPSTREAM_TOOL_INVENTORY.json` (116 excluded methods). That inventory is not a claim that every disabled legacy implementation has received a full security audit. The restricted build compiles only `AutoEngineerTools` and `SafetyTools` from the Tools folder and registers those two classes explicitly. It registers no MCP resources and does not initialize a chat listener.
+Reviewed the twelve exposed implementations, their queued and direct RCON paths, argument handling, lease ownership, cancellation, and startup behavior. The legacy public tool-method inventory is in `UPSTREAM_TOOL_INVENTORY.json` (116 excluded methods). That inventory is not a claim that every disabled legacy implementation has received a full security audit. The restricted build compiles only `AutoEngineerTools` and `SafetyTools` from the Tools folder and registers those two classes explicitly. It registers no MCP resources and does not initialize a chat listener.
 
 | Exposed tool | Implementation and checks | Game effect |
 |---|---|---|
-| `autoengineer_policy` | Fixed policy v4, max walk 5; no model-supplied policy | None |
+| `autoengineer_policy` | Fixed policy v5, max walk 5; no model-supplied policy | None |
 | `autoengineer_view` | Direct fixed Lua; one character; at most 2000 main-inventory slots and 64 item/quality groups; no arguments | Read position, tick, surface and inventory |
+| `autoengineer_operation_preview` | Read-only starter allowlist; count 1..3; inventory/recipe/busy/range checks | Read batch preconditions |
+| `autoengineer_operation` | Queued; same allowlist, owning lease, exact resource target within 2 tiles, independent batch accounting; tick-based deadline and Stop/lease-expiry cleanup | Mine basic resource or handcraft gears/cable |
 | `get_player_position` | Queued fixed Lua through PathfindingService; no arbitrary arguments | Read position |
 | `get_nearby_entities` | Queued fixed Lua; finite radius greater than zero, at most 8; no remote center | Read entities |
 | `scan_resources` | Queued fixed Lua; finite radius greater than zero, at most 50; no remote center | Read resource summary |
@@ -17,7 +19,7 @@ Reviewed the ten exposed implementations, their queued and direct RCON paths, ar
 | `autoengineer_status` | Direct read outside gameplay queue; same active owner and single character | Read position, walking, tick |
 | `autoengineer_stop` | Direct safety Lua; owning lease; later-tick acknowledgement | Latch stop; clear walking/mining |
 
-The request filter rejects every unlisted tool name and unexpected argument key before invoking a handler. No raw Lua, console commands, teleportation, item spawning, building, crafting, mining dispatch, filesystem access, image processing, remote scan centers, or dynamic assembly registration is exposed. Safety operations intentionally bypass the gameplay queue so stopping cannot wait behind walking.
+The request filter rejects every unlisted tool name and unexpected argument key before invoking a handler. No raw Lua, console commands, teleportation, item spawning, building, unrestricted crafting or mining dispatch, filesystem access, image processing, remote scan centers, or dynamic assembly registration is exposed. Safety operations intentionally bypass the gameplay queue so stopping cannot wait behind walking.
 
 ## Host boundary
 
@@ -34,3 +36,5 @@ Events have a schema number, timestamp, session ID, fixed event type, approved b
 ## Limits
 
 RCON remains a privileged administrative channel. This boundary constrains this MCP service and the normal dashboard/controller approval flow; it is not an operating-system sandbox, a cryptographic proof of human approval, or protection against another authorized raw-RCON client or arbitrary trusted local code. Exactly one player is supported. Tick-handler replacement by other code and paused simulation affect game-side protection. The legacy experiments are excluded from the source package; do not treat them as approved production entry points.
+
+Starter operations and their safety assumptions are documented in [verified operations](VERIFIED_OPERATIONS.md). Existing crafting queues are rejected. Only the bounded agent-owned batch is cancelled; manual inventory/queue changes during a batch invalidate verification and must follow Stop.

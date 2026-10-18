@@ -24,7 +24,7 @@ and stops further proposals. This is an approach objective, not mining or crafti
 
 Rebuild the backend from the updated combined safety patch on its pinned upstream
 revision. Apply it once to a clean checkout; do not layer it over older patches.
-Policy v4 is required: an older backend is refused before the safety lease arms.
+Policy v5 is required: an older backend is refused before the safety lease arms.
 No new tool or arbitrary Lua interface is exposed.
 
 After approval, Factorio computes a collision-aware path. Before setting any walking

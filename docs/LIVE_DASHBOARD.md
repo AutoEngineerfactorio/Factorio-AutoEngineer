@@ -25,8 +25,8 @@ The existing world ID must still match save, surface and player for persistent
 memory. Idle monitoring without an active supervised session is not implemented.
 
 Rebuild the separately obtained backend from the updated combined safety patch
-on its pinned upstream revision. The controller now requires policy v4 and the
-exact ten-tool list, adding only autoengineer_view with no arguments. This direct,
+on its pinned upstream revision. The controller now requires policy v5 and the
+exact twelve-tool list, adding only autoengineer_view with no arguments. This direct,
 fixed Lua read bypasses the gameplay queue but cannot write game state or accept
 arbitrary Lua. Approval permits, path validation, five-tile target limits, safety
 lease and movement watchdog remain independent of the display. Telemetry failures
