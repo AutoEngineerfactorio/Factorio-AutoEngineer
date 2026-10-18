@@ -64,6 +64,10 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
         raw=NS(list_tools=AsyncMock(return_value=NS(tools=[NS(name=k) for k in ALLOWED])),call_tool=AsyncMock(return_value=response({'version':2,'max_walk':5,'restricted':True})))
         with self.assertRaises(RuntimeError): await DispatchBoundary(raw).verify()
 
+    async def test_backend_without_dashboard_policy_refused(self):
+        raw=NS(list_tools=AsyncMock(return_value=NS(tools=[NS(name=k) for k in ALLOWED])),call_tool=AsyncMock(return_value=response({'version':3,'max_walk':5,'restricted':True})))
+        with self.assertRaises(RuntimeError): await DispatchBoundary(raw).verify()
+
     async def test_stationary_live_call_is_cancelled_by_watchdog(self):
         cancelled=asyncio.Event()
         async def call(name,arguments):
