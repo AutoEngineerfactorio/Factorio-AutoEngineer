@@ -59,7 +59,7 @@ Persistent visited-area and failed-target memory is available locally; select a
 world identifier before launching. See [exploration memory](docs/EXPLORATION_MEMORY.md)
 for setup, reset behavior and limitations. Choose a resource or coordinate goal
 with [objective navigation](docs/OBJECTIVE_NAVIGATION.md); the updated backend
-validates each planned route before walking.
+validates each planned route before walking. See [resource discovery](docs/RESOURCE_DISCOVERY.md) for scan reuse and observation freshness.
 
 Suggestions, testing feedback, bug reports, and contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
