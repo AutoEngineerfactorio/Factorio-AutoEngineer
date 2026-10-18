@@ -20,7 +20,7 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
 
     [McpServerTool(Name = "autoengineer_policy"), Description("Report the restricted AutoEngineer dispatch policy.")]
     public string Policy() => System.Text.Json.JsonSerializer.Serialize(new {
-        version=7, max_walk=5, restricted=true,
+        version=8, max_walk=5, restricted=true,
         mode=Environment.GetEnvironmentVariable("AUTOENGINEER_BACKEND_MODE") ?? "helper" });
 
     [McpServerTool(Name = "autoengineer_view"), Description("Read bounded single-player position and main inventory; no game actions.")]
@@ -185,8 +185,14 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
                 end
                 return result,#found>128
             end)
+            local lease=storage.autoengineer_safety
+            local control={lease_active=lease~=nil and not lease.stopped and game.tick<lease.deadline,walking=c.walking_state.walking,input_adapter=false,generation=0,character_control=p.controller_type==defines.controllers.character and not p.driving}
+            if remote.interfaces.autoengineer_input then
+                local ok,value=pcall(remote.call,'autoengineer_input','state',p.index)
+                if ok and value.version==1 then control.input_adapter=true;control.generation=value.generation end
+            end
             rcon.print(helpers.table_to_json({status="ok",tick=game.tick,x=c.position.x,y=c.position.y,
-                surface=c.surface.name,overlays=overlays,inventory=items,inventory_available=inv~=nil,truncated=truncated,
+                surface=c.surface.name,control=control,overlays=overlays,inventory=items,inventory_available=inv~=nil,truncated=truncated,
                 slots=slots,capacity=inv and #inv or 0,slots_truncated=inv and #inv>200 or false,
                 terrain={origin={x=ox,y=oy},step=1,rows=rows,palette=palette,entities=entities,partial=partial}}))
             """, cancellationToken);

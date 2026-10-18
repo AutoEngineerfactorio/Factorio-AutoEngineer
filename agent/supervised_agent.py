@@ -1,35 +1,33 @@
-from autoengineer_config import get_settings, mcp_parameters
-
 import asyncio
 import json
 import math
-import urllib.request
-import time
+import os
 import signal
 import sys
+import time
+import urllib.request
 
-from session_safety import ConsoleControl, SafetySession, StopRequested, daemon_call
-
-from movement_proposals import movement_choices, proposal_messages, resolve_choice
-
-from movement_watchdog import monitored_walk
 from agent_events import emit
-from dispatch_boundary import DispatchBoundary
-from mode_policy import load_mode, SEMI
-from exploration_memory import load_memory
-from navigation_objective import load_objective
-from resource_discovery import ResourceDiscovery
+from autoengineer_config import get_settings, mcp_parameters
 from dashboard_feed import DashboardFeed
-from verified_operations import load_operation, run_operation
-
+from dispatch_boundary import DispatchBoundary
+from exploration_memory import load_memory
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
+from mode_policy import SEMI, load_mode
+from movement_proposals import movement_choices, proposal_messages, resolve_choice
+from movement_watchdog import monitored_walk
+from navigation_objective import load_objective
+from resource_discovery import ResourceDiscovery
+from session_safety import ConsoleControl, SafetySession, StopRequested, daemon_call
+from verified_operations import load_operation, run_operation
 
 API = get_settings()["llm_api_url"]
 MAX_ACTIONS = 3
 MAX_WALK = 5.0
 
 READ_TOOLS = {
+    "autoengineer_view",
     "get_player_position",
     "get_nearby_entities",
     "scan_resources",
@@ -50,14 +48,13 @@ def decode(result):
 async def read_tool(session, name, args=None):
     if name not in READ_TOOLS:
         raise PermissionError("Read tool forbidden")
-    result = await asyncio.wait_for(
-        session.call_tool(name, arguments=args or {}),
-        timeout=30
-    )
+    result = await asyncio.wait_for(session.call_tool(name, arguments=args or {}), timeout=30)
     value = decode(result)
     if not isinstance(value, dict):
         raise ValueError("Invalid observation")
-    if name == "get_player_position" and any(type(value.get(k)) not in (float, int) or not math.isfinite(value[k]) for k in ("x", "y")):
+    if name == "get_player_position" and any(
+        type(value.get(k)) not in (float, int) or not math.isfinite(value[k]) for k in ("x", "y")
+    ):
         raise ValueError("Invalid player position")
     return value
 
@@ -65,7 +62,12 @@ async def read_tool(session, name, args=None):
 def ask_ai(observation, history):
     choices = movement_choices(observation, history)
     if not choices:
-        return {"action": "stop", "x": None, "y": None, "reason": "No untried short waypoints remain"}
+        return {
+            "action": "stop",
+            "x": None,
+            "y": None,
+            "reason": "No untried short waypoints remain",
+        }
     payload = {
         "model": get_settings()["llm_model"],
         "temperature": 0.2,
@@ -77,7 +79,7 @@ def ask_ai(observation, history):
         API + "/chat/completions",
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"},
-        method="POST"
+        method="POST",
     )
 
     with urllib.request.urlopen(req, timeout=120) as res:
@@ -105,84 +107,86 @@ def validate(decision, position):
     x = decision.get("x")
     y = decision.get("y")
 
-    if any(
-        type(v) not in (float, int) or not math.isfinite(v)
-        for v in (x, y)
-    ):
+    if any(type(v) not in (float, int) or not math.isfinite(v) for v in (x, y)):
         raise ValueError("Invalid coordinates")
 
-    distance = math.dist(
-        (position["x"], position["y"]), (x, y)
-    )
+    distance = math.dist((position["x"], position["y"]), (x, y))
 
     if not 0.5 <= distance <= MAX_WALK:
-        raise PermissionError(
-            f"Walking distance rejected: {distance:.2f}"
-        )
+        raise PermissionError(f"Walking distance rejected: {distance:.2f}")
 
-    return {
-        "targetX": x,
-        "targetY": y,
-        "tolerance": 0.75,
-        "timeoutSeconds": 20
-    }
+    return {"targetX": x, "targetY": y, "tolerance": 0.75, "timeoutSeconds": 20}
 
 
 async def run_cycles(session, control, owner, feed=None, policy=None):
     if not isinstance(session, DispatchBoundary):
         session = DispatchBoundary(session, control, policy if policy is not None else load_mode())
-    session.policy.authorize('walk_to_position')
+    session.policy.authorize("walk_to_position")
     history = []
     attempted = []
     memory = load_memory()
     objective = load_objective()
     discovery = ResourceDiscovery()
-    print('Exploration memory: ' + ('enabled for the selected world' if memory else 'disabled; set AUTOENGINEER_WORLD for persistence'))
+    print(
+        "Exploration memory: "
+        + (
+            "enabled for the selected world"
+            if memory
+            else "disabled; set AUTOENGINEER_WORLD for persistence"
+        )
+    )
     for step in range(1, MAX_ACTIONS + 1):
         emit("proposal", cycle=step)
         print(f"\n=== AI CYCLE {step}/{MAX_ACTIONS} ===")
 
-        position = await read_tool(
-            session, "get_player_position"
+        position = await read_tool(session, "get_player_position")
+        resources = await discovery.observe(
+            position, lambda: read_tool(session, "scan_resources", {"radius": 50})
         )
-        resources = await discovery.observe(position, lambda: read_tool(
-            session, 'scan_resources', {'radius': 50}))
-        print('Resource discovery:', 'cached' if resources['cached'] else 'fresh',
-              'types:', len(resources['resources']), 'scans:', discovery.scans,
-              'cache hits:', discovery.hits, 'age:', resources['age_seconds'])
-        print('Observed resource centers:', ', '.join(
-            f"{r['name']} {r['distance']:.1f} tiles" for r in resources['resources'][:8]) or 'none')
-        nearby = await read_tool(
-            session, "get_nearby_entities",
-            {"radius": 8}
+        print(
+            "Resource discovery:",
+            "cached" if resources["cached"] else "fresh",
+            "types:",
+            len(resources["resources"]),
+            "scans:",
+            discovery.scans,
+            "cache hits:",
+            discovery.hits,
+            "age:",
+            resources["age_seconds"],
         )
+        print(
+            "Observed resource centers:",
+            ", ".join(f"{r['name']} {r['distance']:.1f} tiles" for r in resources["resources"][:8])
+            or "none",
+        )
+        nearby = await read_tool(session, "get_nearby_entities", {"radius": 8})
 
-        state = {
-            "position": position,
-            "resources": resources,
-            "nearby": nearby
-        }
+        state = {"position": position, "resources": resources, "nearby": nearby}
         if memory is not None:
             memory.remember(position)
-            state['exploration'] = memory
+            state["exploration"] = memory
         if objective is not None:
             target = objective.observe(state)
             if target is None:
-                print('Selected resource is not observed; stopping without movement.')
+                print("Selected resource is not observed; stopping without movement.")
                 break
-            print('Selected objective:', json.dumps(target), 'remaining:', round(objective.distance(position), 2))
+            print(
+                "Selected objective:",
+                json.dumps(target),
+                "remaining:",
+                round(objective.distance(position), 2),
+            )
             if objective.distance(position) <= objective.radius:
-                print('Objective reached; no further movement requested.')
+                print("Objective reached; no further movement requested.")
                 break
-            state['objective'] = dict(target)
+            state["objective"] = dict(target)
         if feed is not None:
-            feed.update(resources, memory, state.get('objective'))
+            feed.update(resources, memory, state.get("objective"))
 
-        decision = await daemon_call(
-            ask_ai, state, history
-        )
+        decision = await daemon_call(ask_ai, state, history)
         if feed is not None:
-            feed.update(resources, memory, state.get('objective'), decision)
+            feed.update(resources, memory, state.get("objective"), decision)
 
         print("\nModel proposes:")
         print(json.dumps(decision, indent=2))
@@ -193,17 +197,16 @@ async def run_cycles(session, control, owner, feed=None, policy=None):
             print("\n=== PROPOSAL REJECTED ===")
             print("Reason:", str(exc))
             print("No gameplay action executed.")
-            history.append({
-                "decision": decision,
-                "result": "validation_rejected",
-                "reason": str(exc)
-            })
+            history.append(
+                {"decision": decision, "result": "validation_rejected", "reason": str(exc)}
+            )
             continue
 
         if arguments is None:
             print("AI chose to stop.")
             break
 
+        session.propose("walk_to_position", arguments, {"position": position})
         print("\nValidated action:")
         print(json.dumps(arguments, indent=2))
 
@@ -215,20 +218,13 @@ async def run_cycles(session, control, owner, feed=None, policy=None):
             break
 
         if approval != "y":
-            history.append({
-                "decision": decision,
-                "result": "rejected_by_user"
-            })
+            session.cancel_proposal()
+            history.append({"decision": decision, "result": "rejected_by_user"})
             continue
 
-        latest = await read_tool(
-            session, "get_player_position"
-        )
+        latest = await read_tool(session, "get_player_position")
 
-        drift = math.dist(
-            (position["x"], position["y"]),
-            (latest["x"], latest["y"])
-        )
+        drift = math.dist((position["x"], position["y"]), (latest["x"], latest["y"]))
 
         if drift > 0.5:
             print("Player position changed. Action cancelled.")
@@ -236,7 +232,7 @@ async def run_cycles(session, control, owner, feed=None, policy=None):
 
         arguments = validate(decision, latest)
         if memory is not None and memory.blocked(decision):
-            print('Previously failed destination rejected; no movement dispatched.')
+            print("Previously failed destination rejected; no movement dispatched.")
             continue
 
         name = "walk_to_position"
@@ -245,9 +241,11 @@ async def run_cycles(session, control, owner, feed=None, policy=None):
 
         if control.stop.is_set():
             raise StopRequested()
-        if any(math.dist((latest["x"], latest["y"]), origin) <= 0.75 and
-               math.dist((arguments["targetX"], arguments["targetY"]), target) <= 1.0
-               for origin, target in attempted):
+        if any(
+            math.dist((latest["x"], latest["y"]), origin) <= 0.75
+            and math.dist((arguments["targetX"], arguments["targetY"]), target) <= 1.0
+            for origin, target in attempted
+        ):
             emit("movement_repeated", cycle=step)
             print("Repeated movement from the same location rejected.")
             continue
@@ -256,33 +254,20 @@ async def run_cycles(session, control, owner, feed=None, policy=None):
         session.approve(arguments, approval)
         emit("dispatch", cycle=step)
         began = time.monotonic()
-        result = await asyncio.wait_for(
-            monitored_walk(session, arguments),
-            timeout=30
-        )
+        result = await asyncio.wait_for(monitored_walk(session, arguments), timeout=30)
 
         outcome = decode(result)
 
-        final = await read_tool(
-            session, "get_player_position"
-        )
+        final = await read_tool(session, "get_player_position")
 
         remaining = math.dist(
-            (arguments["targetX"], arguments["targetY"]),
-            (final["x"], final["y"])
+            (arguments["targetX"], arguments["targetY"]), (final["x"], final["y"])
         )
 
-        moved = math.dist(
-            (latest["x"], latest["y"]),
-            (final["x"], final["y"])
-        )
+        moved = math.dist((latest["x"], latest["y"]), (final["x"], final["y"]))
 
         initial_remaining = math.dist(
-            (latest["x"], latest["y"]),
-            (
-                arguments["targetX"],
-                arguments["targetY"]
-            )
+            (latest["x"], latest["y"]), (arguments["targetX"], arguments["targetY"])
         )
 
         progress = initial_remaining - remaining
@@ -294,6 +279,9 @@ async def run_cycles(session, control, owner, feed=None, policy=None):
             and progress >= 0.15
         )
 
+        session.checkpoint(
+            success, {"position": final, "status": outcome.get("status"), "remaining": remaining}
+        )
         print("\n=== ACTION RESULT ===")
         print("MCP status:", outcome.get("status"))
         print("Final position:", final)
@@ -302,25 +290,35 @@ async def run_cycles(session, control, owner, feed=None, policy=None):
         print("Progress toward target:", round(progress, 2))
         print("Verified success:", success)
         if objective is not None:
-            print('Objective remaining:', round(objective.distance(final), 2))
+            print("Objective remaining:", round(objective.distance(final), 2))
 
-        stalled = outcome.get("status") == "stuck" or (not success and moved < 0.25 and outcome.get("status") not in {"no_path", "path_rejected"})
+        stalled = outcome.get("status") == "stuck" or (
+            not success
+            and moved < 0.25
+            and outcome.get("status") not in {"no_path", "path_rejected"}
+        )
         if memory is not None:
             memory.remember(final)
             if not success:
                 memory.remember(decision, failed=True)
         if feed is not None:
-            feed.update(resources, memory, state.get('objective'))
-        emit("movement_arrived" if success else "movement_stalled" if stalled else "movement_failed",
-             cycle=step, moved=moved, remaining=remaining, progress=progress, elapsed=time.monotonic()-began,
-             status=outcome.get("status") if outcome.get("status") in {"arrived", "no_path", "stuck", "timeout"} else "other")
-        history.append({
-            "decision": decision,
-            "outcome": outcome.get("status"),
-            "verified": success
-        })
+            feed.update(resources, memory, state.get("objective"))
+        emit(
+            "movement_arrived" if success else "movement_stalled" if stalled else "movement_failed",
+            cycle=step,
+            moved=moved,
+            remaining=remaining,
+            progress=progress,
+            elapsed=time.monotonic() - began,
+            status=outcome.get("status")
+            if outcome.get("status") in {"arrived", "no_path", "stuck", "timeout"}
+            else "other",
+        )
+        history.append(
+            {"decision": decision, "outcome": outcome.get("status"), "verified": success}
+        )
         if success and objective is not None and objective.distance(final) <= objective.radius:
-            print('Objective reached; no further movement requested.')
+            print("Objective reached; no further movement requested.")
             break
 
         if not success:
@@ -330,12 +328,13 @@ async def run_cycles(session, control, owner, feed=None, policy=None):
                 # failed observation, transport error or cancellation ends safely.
                 await asyncio.sleep(0.1)
                 stationary = await read_tool(session, "get_player_position")
-                if math.dist((final["x"], final["y"]),
-                             (stationary["x"], stationary["y"])) <= 0.01:
+                if math.dist((final["x"], final["y"]), (stationary["x"], stationary["y"])) <= 0.01:
                     if control.stop.is_set():
                         raise StopRequested()
                     emit("route_recovery", cycle=step)
-                    print("Route blocked; excluding this destination. A new movement requires fresh approval.")
+                    print(
+                        "Route blocked; excluding this destination. A new movement requires fresh approval."
+                    )
                     continue
                 print("Player still moving after route failure; stopping loop.")
             else:
@@ -343,11 +342,13 @@ async def run_cycles(session, control, owner, feed=None, policy=None):
             break
 
 
-
 async def main():
     policy = load_mode()
     if policy.mode != SEMI:
-        print('AI Helper: observation only; use the dashboard live view. No gameplay session started.',flush=True)
+        print(
+            "AI Helper: observation only; use the dashboard live view. No gameplay session started.",
+            flush=True,
+        )
         return
     params = mcp_parameters()
     emit("session_start")
@@ -365,17 +366,52 @@ async def main():
                 session = DispatchBoundary(session, control, policy)
                 await session.verify()
                 emit("policy_verified")
+                from autoengineer_config import get_settings
+                from job_journal import (
+                    JobJournal,
+                    RecoveryRequired,
+                    configuration_identity,
+                    journal_path,
+                )
+
+                world = os.environ.get("AUTOENGINEER_WORLD")
+                observed = await read_tool(session, "autoengineer_view")
+                journal = JobJournal(journal_path(), world, observed["surface"])
                 try:
+                    settings = get_settings()
+                    identity = configuration_identity(settings)
+                    journal.start(
+                        {
+                            "objective": os.environ.get("AUTOENGINEER_OBJECTIVE"),
+                            "operation": load_operation(),
+                        },
+                        identity,
+                    )
+                    session.journal = journal
+                    print("Durable job:", journal.job, flush=True)
                     safety = SafetySession(session, control)
                     feed = DashboardFeed()
                     operation = load_operation()
                     await safety.run(
-                        lambda: feed.run(session, control,
-                            lambda: run_operation(session, control, safety.owner, operation, feed)
-                            if operation is not None else run_cycles(session, control, safety.owner, feed))
+                        lambda: feed.run(
+                            session,
+                            control,
+                            lambda: (
+                                run_operation(session, control, safety.owner, operation, feed)
+                                if operation is not None
+                                else run_cycles(session, control, safety.owner, feed)
+                            ),
+                        )
+                    )
+                except RecoveryRequired:
+                    print(
+                        "RECOVERY_REQUIRED: interrupted work needs fresh observation and human review; no action was retried.",
+                        flush=True,
                     )
                 except StopRequested:
                     print("Stopped by user or closed input.", flush=True)
+                finally:
+                    journal.close()
     finally:
         for sig, handler in previous.items():
             signal.signal(sig, handler)

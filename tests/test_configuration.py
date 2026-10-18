@@ -1,10 +1,11 @@
 """Offline configuration tests; no backend, network, model, or game access."""
+
 import os
-from pathlib import Path
 import sys
 import tempfile
-from types import SimpleNamespace
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
@@ -45,7 +46,7 @@ class ConfigurationTests(unittest.TestCase):
     def test_bad_ports_are_rejected(self):
         for value in ("true", "0", "65536", '"27015"'):
             with self.subTest(value=value):
-                self.write_config('{"rcon_port": ' + value + '}')
+                self.write_config('{"rcon_port": ' + value + "}")
                 with self.assertRaises(ValueError):
                     config.get_settings()
 
@@ -62,14 +63,19 @@ class ConfigurationTests(unittest.TestCase):
         self.assertNotIn("fake-test-value", str(caught.exception))
 
     def test_relative_config_and_dll_resolve_from_project(self):
-        self.write_config('{"mcp_server_dll":"backend/server.dll", "rcon_port":28000}', "custom.json")
+        self.write_config(
+            '{"mcp_server_dll":"backend/server.dll", "rcon_port":28000}', "custom.json"
+        )
         os.environ["AUTOENGINEER_CONFIG"] = "custom.json"
         os.environ["FACTORIO_RCON_PASSWORD"] = "fake-test-value"
         dll = self.root / "backend/server.dll"
         dll.parent.mkdir()
         dll.write_bytes(b"")
         fake_mcp = SimpleNamespace(StdioServerParameters=lambda **kwargs: SimpleNamespace(**kwargs))
-        with patch.dict(sys.modules, {"mcp": fake_mcp}), patch.object(config.shutil, "which", return_value="dotnet"):
+        with (
+            patch.dict(sys.modules, {"mcp": fake_mcp}),
+            patch.object(config.shutil, "which", return_value="dotnet"),
+        ):
             params = config.mcp_parameters()
         self.assertEqual(params.args, [str(dll.resolve())])
         self.assertEqual(params.env["FACTORIO_RCON_PASSWORD"], "fake-test-value")

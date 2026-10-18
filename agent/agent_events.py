@@ -1,16 +1,34 @@
 """Small JSONL audit records; arbitrary text, credentials and paths are excluded."""
-from datetime import datetime, timezone
+
 import json
 import math
-from pathlib import Path
-from app_runtime import data_root
 import threading
 import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+from app_runtime import data_root
 
 FIELDS = {"cycle", "approved", "moved", "remaining", "progress", "elapsed", "count"}
-EVENTS = {"operation_proposal", "operation_verified", "operation_failed", "session_start", "policy_verified", "proposal", "approval", "dispatch",
-          "movement_arrived", "movement_failed", "movement_stalled", "movement_repeated",
-          "route_recovery", "stop_requested", "stop_confirmed", "stop_unconfirmed", "session_end"}
+EVENTS = {
+    "operation_proposal",
+    "operation_verified",
+    "operation_failed",
+    "session_start",
+    "policy_verified",
+    "proposal",
+    "approval",
+    "dispatch",
+    "movement_arrived",
+    "movement_failed",
+    "movement_stalled",
+    "movement_repeated",
+    "route_recovery",
+    "stop_requested",
+    "stop_confirmed",
+    "stop_unconfirmed",
+    "session_end",
+}
 
 
 class EventLog:
@@ -24,17 +42,31 @@ class EventLog:
     def emit(self, event, **fields):
         if event not in EVENTS:
             raise ValueError("Unknown event type")
-        record = {"schema": 1, "time": datetime.now(timezone.utc).isoformat(), "session": self.session, "event": event}
+        record = {
+            "schema": 1,
+            "time": datetime.now(timezone.utc).isoformat(),
+            "session": self.session,
+            "event": event,
+        }
         for key, value in fields.items():
-            if key == "status" and value in {"arrived", "no_path", "stuck", "timeout", "path_rejected", "other"}:
+            if key == "status" and value in {
+                "arrived",
+                "no_path",
+                "stuck",
+                "timeout",
+                "path_rejected",
+                "other",
+            }:
                 record[key] = value
             if key in FIELDS and type(value) in (int, float, bool) and math.isfinite(value):
                 record[key] = value
-        with self.lock, self.path.open('a', encoding='utf-8') as output:
-            output.write(json.dumps(record, separators=(',', ':'), allow_nan=False) + '\n')
+        with self.lock, self.path.open("a", encoding="utf-8") as output:
+            output.write(json.dumps(record, separators=(",", ":"), allow_nan=False) + "\n")
 
 
 _logger = None
+
+
 def emit(event, **fields):
     global _logger
     try:

@@ -1,12 +1,10 @@
-from autoengineer_config import get_settings, mcp_parameters
-
 import asyncio
 import json
 import urllib.request
 
+from autoengineer_config import get_settings, mcp_parameters
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
-
 
 API = get_settings()["llm_api_url"]
 
@@ -16,6 +14,7 @@ READ_TOOLS = (
     "scan_resources",
     "get_available_recipes",
 )
+
 
 async def observe(session, schemas):
     observation = {}
@@ -43,16 +42,13 @@ async def observe(session, schemas):
             )
             observation[name] = {
                 "error": bool(result.is_error),
-                "content": [
-                    item.text
-                    for item in result.content
-                    if item.type == "text"
-                ],
+                "content": [item.text for item in result.content if item.type == "text"],
             }
         except Exception as exc:
             observation[name] = {"error": str(exc)}
 
     return observation
+
 
 def compact_observation(observation):
     compact = {}
@@ -73,8 +69,10 @@ def compact_observation(observation):
             compact[name] = {
                 "total_recipes": len(recipes),
                 "early_game_examples": [
-                    recipe for recipe in recipes
-                    if recipe.get("name") in {
+                    recipe
+                    for recipe in recipes
+                    if recipe.get("name")
+                    in {
                         "burner-mining-drill",
                         "stone-furnace",
                         "iron-plate",
@@ -90,41 +88,45 @@ def compact_observation(observation):
 
     return compact
 
+
 def ask_qwen(observation):
     request = urllib.request.Request(
         API + "/chat/completions",
-        data=json.dumps({
-            "model": get_settings()["llm_model"],
-            "temperature": 0.1,
-            "max_tokens": 350,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are Factorio AutoEngineer. "
-                        "Plan using ONLY observed game data. "
-                        "Choose one next action: observe, walk, "
-                        "mine, or craft. "
-                        "If information is missing, choose observe. "
-                        "Do not invent items, recipes, positions, "
-                        "or resources. "
-                        "Return only valid JSON containing "
-                        "action, target, and reason. "
-                        "You cannot execute actions."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(compact_observation(observation)),
-                },
-            ],
-        }).encode(),
+        data=json.dumps(
+            {
+                "model": get_settings()["llm_model"],
+                "temperature": 0.1,
+                "max_tokens": 350,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are Factorio AutoEngineer. "
+                            "Plan using ONLY observed game data. "
+                            "Choose one next action: observe, walk, "
+                            "mine, or craft. "
+                            "If information is missing, choose observe. "
+                            "Do not invent items, recipes, positions, "
+                            "or resources. "
+                            "Return only valid JSON containing "
+                            "action, target, and reason. "
+                            "You cannot execute actions."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(compact_observation(observation)),
+                    },
+                ],
+            }
+        ).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
 
     with urllib.request.urlopen(request, timeout=180) as response:
         return json.load(response)["choices"][0]["message"]["content"]
+
 
 async def main():
     params = mcp_parameters()
@@ -145,6 +147,7 @@ async def main():
     print(decision)
 
     print("\nDRY RUN ONLY: No gameplay actions executed.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

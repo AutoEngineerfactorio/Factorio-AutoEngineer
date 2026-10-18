@@ -1,14 +1,12 @@
-from autoengineer_config import get_settings, mcp_parameters
-
 import argparse
 import asyncio
 import json
 import math
 import urllib.request
 
+from autoengineer_config import get_settings, mcp_parameters
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
-
 
 API = get_settings()["llm_api_url"]
 MAX_DISTANCE = 5.0
@@ -41,30 +39,32 @@ async def call_read_tool(session, name, args=None):
 def ask_qwen(state):
     request = urllib.request.Request(
         API + "/chat/completions",
-        data=json.dumps({
-            "model": get_settings()["llm_model"],
-            "temperature": 0.1,
-            "max_tokens": 250,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You control a Factorio character. "
-                        "Choose one nearby walking destination "
-                        "within 5 tiles of the current position. "
-                        "Return ONLY JSON with keys "
-                        "action, x, y, reason. "
-                        "action must equal walk. "
-                        "Never invent resources or claim "
-                        "that a destination is safe."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(state),
-                },
-            ],
-        }).encode(),
+        data=json.dumps(
+            {
+                "model": get_settings()["llm_model"],
+                "temperature": 0.1,
+                "max_tokens": 250,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You control a Factorio character. "
+                            "Choose one nearby walking destination "
+                            "within 5 tiles of the current position. "
+                            "Return ONLY JSON with keys "
+                            "action, x, y, reason. "
+                            "action must equal walk. "
+                            "Never invent resources or claim "
+                            "that a destination is safe."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(state),
+                    },
+                ],
+            }
+        ).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
@@ -88,10 +88,7 @@ def validate(decision, position):
 
     x, y = decision.get("x"), decision.get("y")
 
-    if any(
-        type(value) not in (int, float) or not math.isfinite(value)
-        for value in (x, y)
-    ):
+    if any(type(value) not in (int, float) or not math.isfinite(value) for value in (x, y)):
         raise ValueError("Invalid coordinates")
 
     distance = math.dist(
@@ -100,9 +97,7 @@ def validate(decision, position):
     )
 
     if distance > MAX_DISTANCE or distance < 0.5:
-        raise PermissionError(
-            f"Movement distance rejected: {distance:.2f}"
-        )
+        raise PermissionError(f"Movement distance rejected: {distance:.2f}")
 
     return {
         "targetX": x,
@@ -119,9 +114,7 @@ async def main(execute=False):
         async with ClientSession(read, write) as session:
             await session.initialize()
 
-            position = await call_read_tool(
-                session, "get_player_position"
-            )
+            position = await call_read_tool(session, "get_player_position")
 
             nearby = await call_read_tool(
                 session,
@@ -150,19 +143,12 @@ async def main(execute=False):
                 print("\nDRY RUN: No movement executed.")
                 return
 
-            current = await call_read_tool(
-                session, "get_player_position"
-            )
+            current = await call_read_tool(session, "get_player_position")
 
-            drift = math.dist(
-                (position["x"], position["y"]),
-                (current["x"], current["y"])
-            )
+            drift = math.dist((position["x"], position["y"]), (current["x"], current["y"]))
 
             if drift > 0.5:
-                raise RuntimeError(
-                    "Player moved since observation. Aborting."
-                )
+                raise RuntimeError("Player moved since observation. Aborting.")
 
             # Validate against the latest position.
             arguments = validate(decision, current)
@@ -170,11 +156,7 @@ async def main(execute=False):
             print("\nExecuting AI-selected movement...")
 
             result = await asyncio.wait_for(
-                session.call_tool(
-                    "walk_to_position",
-                    arguments=arguments
-                ),
-                timeout=30
+                session.call_tool("walk_to_position", arguments=arguments), timeout=30
             )
 
             if result.is_error:
@@ -184,28 +166,19 @@ async def main(execute=False):
                 if item.type == "text":
                     print("Movement result:", item.text)
 
-            final = await call_read_tool(
-                session, "get_player_position"
-            )
+            final = await call_read_tool(session, "get_player_position")
 
-            distance = math.dist(
-                (position["x"], position["y"]),
-                (final["x"], final["y"])
-            )
+            distance = math.dist((position["x"], position["y"]), (final["x"], final["y"]))
 
             remaining = math.dist(
-                (arguments["targetX"], arguments["targetY"]),
-                (final["x"], final["y"])
+                (arguments["targetX"], arguments["targetY"]), (final["x"], final["y"])
             )
 
             print("\n=== MOVEMENT VERIFICATION ===")
             print("Final position:", final)
             print("Distance moved:", round(distance, 2))
             print("Distance from target:", round(remaining, 2))
-            print(
-                "Target reached:",
-                remaining <= arguments["tolerance"]
-            )
+            print("Target reached:", remaining <= arguments["tolerance"])
 
 
 if __name__ == "__main__":

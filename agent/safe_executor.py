@@ -1,13 +1,11 @@
-from autoengineer_config import mcp_parameters
-
 import argparse
 import asyncio
 import json
 import math
 
+from autoengineer_config import mcp_parameters
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
-
 
 # This first executor allows only these MCP calls.
 ALLOWED_TOOLS = {
@@ -50,9 +48,7 @@ async def main(execute):
         async with ClientSession(read, write) as session:
             await session.initialize()
 
-            position = await safe_call(
-                session, "get_player_position", {}
-            )
+            position = await safe_call(session, "get_player_position", {})
 
             x = float(position["x"])
             y = float(position["y"])
@@ -65,9 +61,7 @@ async def main(execute):
             target_x = x + 3.0
             target_y = y
 
-            distance = math.dist(
-                (x, y), (target_x, target_y)
-            )
+            distance = math.dist((x, y), (target_x, target_y))
 
             if distance > MAX_STEP:
                 raise PermissionError("Move exceeds safety limit")
@@ -92,16 +86,12 @@ async def main(execute):
 
             print("\nExecuting approved movement...")
 
-            result = await safe_call(
-                session, "walk_to_position", arguments
-            )
+            result = await safe_call(session, "walk_to_position", arguments)
 
             print("MCP movement result:")
             print(json.dumps(result, indent=2))
 
-            new_position = await safe_call(
-                session, "get_player_position", {}
-            )
+            new_position = await safe_call(session, "get_player_position", {})
 
             moved = math.dist(
                 (x, y),

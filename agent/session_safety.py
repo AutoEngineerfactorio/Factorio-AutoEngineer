@@ -1,8 +1,10 @@
 """Cancellation and bounded safety cleanup, independent of gameplay planning."""
+
 import asyncio
 import json
 import threading
 import uuid
+
 from agent_events import emit
 
 PROMPT = "Execute this action? [y/N/q]: "
@@ -41,6 +43,7 @@ class StopRequested(Exception):
 
 class ConsoleControl:
     """One daemon reader consumes stop/EOF immediately, even during a tool call."""
+
     def __init__(self):
         self.stop = asyncio.Event()
         self.answers = asyncio.Queue()
@@ -51,6 +54,8 @@ class ConsoleControl:
         if not line or text in {"q", "stop"}:
             self.stop.set()
             self.awaiting_answer = False
+            while not self.answers.empty():
+                self.answers.get_nowait()
         elif self.awaiting_answer and not self.stop.is_set():
             self.awaiting_answer = False
             self.answers.put_nowait(text)
@@ -122,6 +127,10 @@ class SafetySession:
         while True:
             await asyncio.sleep(self.interval)
             reply = await self.call("autoengineer_renew")
+            if reply.get("status") == "human_takeover":
+                self.control.stop.set()
+                print("HUMAN_TAKEOVER_CONFIRMED", flush=True)
+                raise StopRequested()
             if reply.get("status") != "active":
                 raise RuntimeError("Game-side lease no longer active")
 
@@ -170,15 +179,18 @@ class SafetySession:
             # Start it before waiting for cancellation acknowledgements.
             if self.attempted_arm:
                 try:
-                    reply = await asyncio.shield(asyncio.wait_for(
-                        self.confirm_stop(), timeout=self.call_timeout
-                    ))
+                    reply = await asyncio.shield(
+                        asyncio.wait_for(self.confirm_stop(), timeout=self.call_timeout)
+                    )
                     if reply.get("status") == "stopped" and reply.get("walking") is False:
                         emit("stop_confirmed")
                         print("SAFETY_STOP_CONFIRMED", flush=True)
                     else:
                         emit("stop_unconfirmed")
-                        print("SAFETY_STOP_UNCONFIRMED: game-side stop was not acknowledged", flush=True)
+                        print(
+                            "SAFETY_STOP_UNCONFIRMED: game-side stop was not acknowledged",
+                            flush=True,
+                        )
                 except (Exception, asyncio.CancelledError):
                     emit("stop_unconfirmed")
                     print("SAFETY_STOP_UNCONFIRMED: relying on game-side lease expiry", flush=True)
@@ -188,4 +200,6 @@ class SafetySession:
                     if not task.cancelled():
                         task.exception()  # Consume exceptions without masking cleanup outcome.
                 for task in pending:
-                    task.add_done_callback(lambda item: None if item.cancelled() else item.exception())
+                    task.add_done_callback(
+                        lambda item: None if item.cancelled() else item.exception()
+                    )

@@ -35,6 +35,9 @@ internal sealed class SafetyTools(RconClient rcon)
             if p.controller_type~=defines.controllers.character or p.driving then
                 rcon.print('{"version":1,"status":"character_control_required"}') return
             end
+            if not remote.interfaces.autoengineer_input or remote.call('autoengineer_input','version')~=1 then
+                rcon.print('{"version":1,"status":"input_adapter_required"}') return
+            end
             storage.walk_dir = nil
             storage.mine_state = nil
             p.walking_state = {walking=false, direction=defines.direction.north}
@@ -52,6 +55,9 @@ internal sealed class SafetyTools(RconClient rcon)
         return rcon.ExecuteLuaAsync($$"""
             local s = storage.autoengineer_safety
             local p = game.connected_players[1]
+            if s and s.owner=={{id}} and s.reason=='human_takeover' then
+                rcon.print('{"version":1,"status":"human_takeover"}') return
+            end
             if not s or s.owner ~= {{id}} or s.stopped or game.tick >= s.deadline or #game.connected_players ~= 1 or not p or p.index ~= s.player or p.controller_type~=defines.controllers.character or p.driving then
                 rcon.print('{"version":1,"status":"expired"}') return
             end

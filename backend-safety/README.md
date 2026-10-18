@@ -6,9 +6,9 @@ The patch includes session leases and game-side stopping, twelve explicitly regi
 
 `BASELINE.json` identifies the upstream revision and hashes of changed original files, normalized to LF. The separately built backend retains its existing MIT license; [third-party notices](../THIRD_PARTY_NOTICES.md) reproduce it verbatim. Original additions retain the project MIT license. No vendor binaries or checkout are bundled. See the [implementation audit](../docs/DISPATCH_AUDIT.md) and [validation](../docs/HARDENING_VALIDATION.md). Existing backend tests for removed vision capabilities are not part of this restricted profile; the recorded checks cover compilation, dependency audit, Python tests and direct live dispatch denials.
 
-Objective navigation requires the current policy-v7 patch and a rebuild. It validates returned Factorio paths before walking, including total planned length at most five tiles. See [objective navigation](../docs/OBJECTIVE_NAVIGATION.md). NavigationPathPolicy.cs is a standalone copy for the offline route tests; the combined patch already installs it.
+Objective navigation requires the current policy-v8 patch and a rebuild. It validates returned Factorio paths before walking, including total planned length at most five tiles. See [objective navigation](../docs/OBJECTIVE_NAVIGATION.md). NavigationPathPolicy.cs is a standalone copy for the offline route tests; the combined patch already installs it.
 
-The live dashboard requires policy v7 and the bounded, read-only autoengineer_view tool. Rebuild from the current combined patch on clean pinned upstream. See [live dashboard](../docs/LIVE_DASHBOARD.md).
+The live dashboard requires policy v8 and the bounded, read-only autoengineer_view tool. Rebuild from the current combined patch on clean pinned upstream. See [live dashboard](../docs/LIVE_DASHBOARD.md).
 
 Policy v5 adds only two closed starter-operation tools. The combined patch installs OperationService.cs and extends the guarded tick/Stop paths to bound mining and cancel unfinished owned crafting. See [verified operations](../docs/VERIFIED_OPERATIONS.md).
 
@@ -17,4 +17,4 @@ Rebuild this patch for palette-indexed terrain and slot inventory. The read-only
 
 Operating modes are documented in [OPERATING_MODES.md](../docs/OPERATING_MODES.md). The current mode-aware backend must be rebuilt before Semi-Autonomous sessions run.
 
-Normal-speed movement requires policy v7. Walking is steered on game ticks, with actual travel bounds and stopped-position arrival verification. `NavigationTick.lua` is a readable copy already included in the patch; do not install it twice. See [normal movement and hosting](../docs/NORMAL_MOVEMENT.md).
+Normal-speed movement requires policy v8. Walking is steered on game ticks, with actual travel bounds and stopped-position arrival verification. `NavigationTick.lua` is a readable copy already included in the patch; do not install it twice. See [normal movement and hosting](../docs/NORMAL_MOVEMENT.md).

@@ -17,7 +17,7 @@ All 24 files in the reviewed complete planning archive now guide requirements, d
 
 Next delivery order: safe human takeover and service attachment; a locally tested launcher executable prototype; live capability/research/recipe data and the Helper calculator; blueprint codec/library/preview; legitimate single-block construction; circuits, trains, robots and defense; Space Age platforms/quality and progression; endurance and public packaging; finally third-party mods. Shared deterministic services support all three operating modes. The language model selects goals and explains options; code calculates recipes, rates, geometry and feasibility.
 
-Completed work retains its documented scope. All new acceptance requirements remain unchecked. Emergency stopping and the five-tile development movement limit remain active.
+Completed work retains its documented scope. Requirements are checked only for their documented tested scope; later acceptance remains unchecked. Emergency stopping and the five-tile development movement limit remain active.
 
 ## Phase 0 — Tested proof of concept
 - [x] Local LLM responds via llama.cpp
@@ -42,7 +42,7 @@ Completed work retains its documented scope. All new acceptance requirements rem
 - [x] Live 2D dashboard map and inventory display
 
 ## Phase 3 — Factory gameplay
-- [ ] **R01–R03: next foundation:** manual takeover arbitration, owned-service start/attach/health/stop and a local one-folder launcher executable prototype; test actual readiness, port collisions, cancellation, crashes and shutdown before calling it usable
+- [x] **R01–R03: tested local foundation:** manual takeover arbitration, owned-service start/attach/health/stop, and the Windows one-folder launcher prototype. Real input, live crash checkpoints, readiness, port/duplicate checks, cancellation, source/frozen Stop, actual GUI restart/shutdown and save integrity passed. See [validation](docs/FOUNDATION_VALIDATION.md); production graphs, clean-PC onboarding and endurance remain later work.
 - [ ] **R04–R06: Helper engineering:** live profile/research/recipe/machine snapshots, per-mechanic coverage evidence, and deterministic production math; prove the 300 gears/minute fixture and compare alternatives
 - [ ] **R07–R09: construction pipeline:** bounded faithful blueprint/book codec, private revisions/preview, placement validation, real materials, physical completion and measured throughput; ghosts alone do not count
 - [ ] Production acceptance: multi-output/cyclic/catalyst/probabilistic flows, fluid temperatures, legal machine/module/beacon/quality effects and supply constraints; compare predicted production with 1/5/10-minute measurements
@@ -50,7 +50,7 @@ Completed work retains its documented scope. All new acceptance requirements rem
 - [ ] Circuit/train acceptance: typed signals/ports/wires, red/green isolation, hysteresis, tick latency and power-loss recovery; safe two-station route, interrupts/refueling, failed/full destinations, deadlocks and a 20+ train fixture
 
 - [x] Three operating modes enforced at dispatch: AI Helper (default; no gameplay writes), Semi-Autonomous (approved actions/batches), Fully Autonomous (visibly locked until acceptance gates pass)
-- [ ] Mode-switch and manual-takeover arbitration: revoke pending permits, cancel owned actions, reject stale approvals, re-observe before resume; emergency stopping remains available in every mode
+- [x] Mode-switch and manual-takeover arbitration: revoke pending permits, cancel owned actions, reject stale approvals, re-observe before resume; emergency stopping remains available in every mode
 - [ ] Per-mechanic coverage matrix: profile/version, observe, plan, validated action or justified N/A, outcome verification, mode permission and regression evidence
 - [ ] Read-only research/recipe/machine snapshots and Helper browser, with freshness, unlocks, surface conditions and profile fingerprints
 - [ ] Helper production-target calculator: 300 gears/minute benchmark, explicit utilization margin, alternative plans, supply/transport/power limits and measured-versus-predicted rates
@@ -65,7 +65,7 @@ Completed work retains its documented scope. All new acceptance requirements rem
 - [ ] Chart/fog and stale-state acceptance tests across every observation adapter, beyond the completed bounded dashboard map
 
 - [ ] Runtime capability registry: version, enabled expansions, research, surface, quality and charted observation rights
-- [ ] Durable goal graph and action journal: checkpoints, uncertain-result re-observation and duplicate-safe restart
+- [x] Durable goal/action journal foundation: persistent goal, sequential action dependencies, checkpoints, uncertain-result re-observation and duplicate-safe restart; full production graph expansion follows R06/R09
 - [ ] Deterministic recipe/rate solver, machine ratios, material bills, layout constraints and measured throughput
 - [ ] Closed-loop shortage, brownout, fluid/heat, depletion and spoilage recovery
 - [ ] Construction/logistic robot capacity, coverage, charging and legitimate material checks
@@ -161,3 +161,5 @@ Three-mode permission enforcement and the locked Full choice are tested; [mode b
 - [x] Local Windows one-folder launcher prototype: start/attach readiness, process ownership, profile validation, collision checks, cancellation, service health and verified owned shutdown. See [scope and setup](docs/LAUNCHER.md). Full public installer remains Phase 5.
 - [x] Read-only local map overlays: pollution, electric supply/connections, logistics/construction coverage, nominal turret range, station names and force tags; tested with temporary fixtures. See [bounds and evidence](docs/MAP_TELEMETRY.md).
 - [ ] Extend map browsing beyond the local window, surface selection and search; remote commands require separate mode-aware validation.
+
+Current work: R04 live capability and observation truth, followed by R05–R09 in order. Space Age remains vanilla and third-party mod compatibility remains last.

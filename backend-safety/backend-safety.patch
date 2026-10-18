@@ -136,9 +136,37 @@
      /// </summary>
      internal const string LuaEntitySort = """
          local function sort_entities(t, qx, qy)
-@@ -54,15 +54,138 @@
+@@ -53,16 +53,167 @@
+     /// <c>storage.mine_state</c> (set by MiningService).
      /// </summary>
      internal const string LuaOnTickHandler = """
++        if not remote.interfaces.autoengineer_control then
++            remote.add_interface("autoengineer_control",{takeover=function(index)
++                local s=storage.autoengineer_safety
++                if not s or s.stopped or s.player~=index then return end
++                s.stopped=true;s.reason='human_takeover'
++                local p=game.get_player(index)
++                local c=p and p.character
++                local n=storage.autoengineer_nav
++                local owned_walk=n and n.owner==s.owner and n.status=='running'
++                if owned_walk then n.status='stopped' end
++                local op=storage.operation
++                if c and c.valid then
++                    if owned_walk or storage.walk_dir~=nil then c.walking_state={walking=false,direction=defines.direction.north} end
++                    if storage.mine_state~=nil or (op and not op.status and op.kind=='mine') then c.mining_state={mining=false} end
++                    if op and not op.status and op.kind=='craft' then
++                        local q=c.crafting_queue
++                        local inv=c.get_main_inventory()
++                        local gained=inv and inv.get_item_count{name=op.name,quality='normal'}-op.initial or 0
++                        local units=op.name=='copper-cable' and 2 or 1
++                        local remaining=math.max(0,op.want-math.floor(math.max(0,gained)/units))
++                        if q and q[1] and q[1].recipe==op.name and remaining>0 then c.cancel_crafting{index=1,count=math.min(q[1].count,remaining)} end
++                    end
++                end
++                if op and not op.status then op.status='stopped' end
++                storage.walk_dir=nil;storage.mine_state=nil
++            end})
++        end
          script.on_event(defines.events.on_tick, function()
 -            local p = game.connected_players[1]
 -            if not p then return end
@@ -151,8 +179,9 @@
 +                and p.controller_type==defines.controllers.character and not p.driving
 +            if not active then
 +                if p and p.character and p.character.valid then
-+                    p.character.walking_state={walking=false,direction=defines.direction.north}
-+                    p.character.mining_state={mining=false}
++                    local n=storage.autoengineer_nav
++                    if (n and n.status=='running') or storage.walk_dir~=nil then p.character.walking_state={walking=false,direction=defines.direction.north} end
++                    if storage.mine_state~=nil then p.character.mining_state={mining=false} end
 +                end
 +                local n=storage.autoengineer_nav
 +                if n and n.status=='running' then
@@ -666,7 +695,7 @@
  
 --- /dev/null
 +++ b/FactorioMCP/Tools/AutoEngineerTools.cs
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,238 @@
 +using FactorioMCP.Services;
 +using FactorioMCP.Rcon;
 +using ModelContextProtocol.Server;
@@ -689,7 +718,7 @@
 +
 +    [McpServerTool(Name = "autoengineer_policy"), Description("Report the restricted AutoEngineer dispatch policy.")]
 +    public string Policy() => System.Text.Json.JsonSerializer.Serialize(new {
-+        version=7, max_walk=5, restricted=true,
++        version=8, max_walk=5, restricted=true,
 +        mode=Environment.GetEnvironmentVariable("AUTOENGINEER_BACKEND_MODE") ?? "helper" });
 +
 +    [McpServerTool(Name = "autoengineer_view"), Description("Read bounded single-player position and main inventory; no game actions.")]
@@ -854,8 +883,14 @@
 +                end
 +                return result,#found>128
 +            end)
++            local lease=storage.autoengineer_safety
++            local control={lease_active=lease~=nil and not lease.stopped and game.tick<lease.deadline,walking=c.walking_state.walking,input_adapter=false,generation=0,character_control=p.controller_type==defines.controllers.character and not p.driving}
++            if remote.interfaces.autoengineer_input then
++                local ok,value=pcall(remote.call,'autoengineer_input','state',p.index)
++                if ok and value.version==1 then control.input_adapter=true;control.generation=value.generation end
++            end
 +            rcon.print(helpers.table_to_json({status="ok",tick=game.tick,x=c.position.x,y=c.position.y,
-+                surface=c.surface.name,overlays=overlays,inventory=items,inventory_available=inv~=nil,truncated=truncated,
++                surface=c.surface.name,control=control,overlays=overlays,inventory=items,inventory_available=inv~=nil,truncated=truncated,
 +                slots=slots,capacity=inv and #inv or 0,slots_truncated=inv and #inv>200 or false,
 +                terrain={origin={x=ox,y=oy},step=1,rows=rows,palette=palette,entities=entities,partial=partial}}))
 +            """, cancellationToken);
@@ -901,7 +936,7 @@
 +}
 --- /dev/null
 +++ b/FactorioMCP/Tools/SafetyTools.cs
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,123 @@
 +using System.ComponentModel;
 +using System.Text.Json;
 +using FactorioMCP.Rcon;
@@ -939,6 +974,9 @@
 +            if p.controller_type~=defines.controllers.character or p.driving then
 +                rcon.print('{"version":1,"status":"character_control_required"}') return
 +            end
++            if not remote.interfaces.autoengineer_input or remote.call('autoengineer_input','version')~=1 then
++                rcon.print('{"version":1,"status":"input_adapter_required"}') return
++            end
 +            storage.walk_dir = nil
 +            storage.mine_state = nil
 +            p.walking_state = {walking=false, direction=defines.direction.north}
@@ -956,6 +994,9 @@
 +        return rcon.ExecuteLuaAsync($$"""
 +            local s = storage.autoengineer_safety
 +            local p = game.connected_players[1]
++            if s and s.owner=={{id}} and s.reason=='human_takeover' then
++                rcon.print('{"version":1,"status":"human_takeover"}') return
++            end
 +            if not s or s.owner ~= {{id}} or s.stopped or game.tick >= s.deadline or #game.connected_players ~= 1 or not p or p.index ~= s.player or p.controller_type~=defines.controllers.character or p.driving then
 +                rcon.print('{"version":1,"status":"expired"}') return
 +            end
