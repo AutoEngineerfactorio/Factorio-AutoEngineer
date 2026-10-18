@@ -341,7 +341,7 @@
  
 --- /dev/null
 +++ b/FactorioMCP/Tools/AutoEngineerTools.cs
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,149 @@
 +using FactorioMCP.Services;
 +using FactorioMCP.Rcon;
 +using ModelContextProtocol.Server;
@@ -372,13 +372,15 @@
 +            if #game.connected_players ~= 1 or not p or not p.character then
 +                rcon.print('{"status":"unavailable"}') return
 +            end
-+            local inv = p.get_main_inventory()
-+            local items, lookup, truncated = {}, {}, false
++            local c = p.character
++            local inv = c.get_inventory(defines.inventory.character_main)
++            local items, lookup, truncated, slots = {}, {}, false, {}
 +            if inv then
 +                for i=1,math.min(#inv,2000) do
 +                    local stack = inv[i]
 +                    if stack.valid_for_read then
 +                        local quality = stack.quality and stack.quality.name or "normal"
++                        if i<=200 then slots[#slots+1]={slot=i,name=stack.name,quality=quality,count=stack.count} end
 +                        local key = stack.name .. ":" .. quality
 +                        local item = lookup[key]
 +                        if item then item.count = item.count + stack.count
@@ -391,8 +393,63 @@
 +                end
 +                if #inv > 2000 then truncated = true end
 +            end
-+            rcon.print(helpers.table_to_json({status="ok",tick=game.tick,x=p.position.x,y=p.position.y,
-+                surface=p.surface.name,inventory=items,inventory_available=inv~=nil,truncated=truncated}))
++            -- Display only: do not chart, generate chunks, select entities or change player state.
++            local tiles, entities = {}, {}
++            local ox,oy=math.floor(c.position.x/4)*4-128,math.floor(c.position.y/4)*4-128
++            local function visible(x,y)
++                return p.force.is_chunk_visible(c.surface,{math.floor(x/32),math.floor(y/32)})
++            end
++            local function charted(x,y)
++                return p.force.is_chunk_charted(c.surface,{math.floor(x/32),math.floor(y/32)})
++            end
++            -- Palette-indexed tile rows preserve one-tile detail without huge JSON cell objects.
++            local rows,palette,colors,chunks={},{"#000000"},{["#000000"]=0},{}
++            for y=oy,oy+255 do
++                local row={}
++                for x=ox,ox+255 do
++                    local cx,cy=math.floor(x/32),math.floor(y/32)
++                    local ck=cx..":"..cy
++                    local chunk=chunks[ck]
++                    if not chunk then
++                        chunk={charted=charted(x,y),visible=visible(x,y)};chunks[ck]=chunk
++                    end
++                    local index=0
++                    if chunk.charted then
++                        local t=c.surface.get_tile(x,y)
++                        local color=t.prototype.map_color
++                        local shade=chunk.visible and 1 or 0.6667
++                        local hex=string.format("#%02x%02x%02x",math.floor(color.r*shade),math.floor(color.g*shade),math.floor(color.b*shade))
++                        index=colors[hex]
++                        if not index then
++                            if #palette<256 then index=#palette;palette[#palette+1]=hex;colors[hex]=index
++                            else index=0 end
++                        end
++                    end
++                    row[#row+1]=string.format("%02x",index)
++                end
++                rows[#rows+1]=table.concat(row)
++            end
++            local groups={
++                {kind="resource",types={"resource"},limit=2048},
++                {kind="nature",types={"tree","simple-entity"},limit=512},
++                {kind="building",force=p.force.name,limit=256},
++                {kind="enemy",force="enemy",limit=128}}
++            local partial=false
++            for _,g in ipairs(groups) do
++                local found=c.surface.find_entities_filtered{area={{ox,oy},{ox+256,oy+256}},
++                    type=g.types,force=g.force,limit=g.limit+1}
++                if #found>g.limit then partial=true end
++                for i=1,math.min(#found,g.limit) do
++                    local e=found[i]
++                    if e.valid and e.type~="character" and e.position.x>=ox and e.position.x<ox+256 and e.position.y>=oy and e.position.y<oy+256 and visible(e.position.x,e.position.y) then
++                        entities[#entities+1]={x=e.position.x,y=e.position.y,name=e.name,kind=g.kind}
++                    end
++                end
++            end
++            rcon.print(helpers.table_to_json({status="ok",tick=game.tick,x=c.position.x,y=c.position.y,
++                surface=c.surface.name,inventory=items,inventory_available=inv~=nil,truncated=truncated,
++                slots=slots,capacity=inv and #inv or 0,slots_truncated=inv and #inv>200 or false,
++                terrain={origin={x=ox,y=oy},step=1,rows=rows,palette=palette,entities=entities,partial=partial}}))
 +            """, cancellationToken);
 +
 +    [McpServerTool(Name = "get_player_position"), Description("Read the single connected player's position.")]

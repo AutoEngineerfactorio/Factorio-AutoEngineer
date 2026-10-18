@@ -11,3 +11,6 @@ Objective navigation requires the current policy-v5 patch and a rebuild. It vali
 The live dashboard requires policy v5 and the bounded, read-only autoengineer_view tool. Rebuild from the current combined patch on clean pinned upstream. See [live dashboard](../docs/LIVE_DASHBOARD.md).
 
 Policy v5 adds only two closed starter-operation tools. The combined patch installs OperationService.cs and extends the guarded tick/Stop paths to bound mining and cancel unfinished owned crafting. See [verified operations](../docs/VERIFIED_OPERATIONS.md).
+
+## Game-style dashboard display
+Rebuild this patch for palette-indexed terrain and slot inventory. The read-only observer does not arm a gameplay lease. See [display setup and bounds](../docs/LIVE_DASHBOARD.md).
