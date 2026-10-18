@@ -4,7 +4,7 @@ Opening the dashboard starts a separate read-only observer. No model or AI sessi
 Starting/stopping the AI leaves observation running; closing the dashboard shuts down its observer and owned MCP process.
 Unavailable/disconnected reads mark the last snapshot stale; the observer retries without approving actions or arming a safety lease.
 
-Rebuild the current backend patch before use. The view tool keeps the same no-argument interface and policy-v6 restricted tool boundary.
+Rebuild the current backend patch before use. The view tool keeps the same no-argument interface and policy-v7 restricted tool boundary.
 It reads the actual character position, surface and main inventory, including while the user is in remote view.
 The game-style map uses the running game's tile map colors, a palette-indexed one-tile raster,
 charted terrain with dimmed fog, visible resource/nature/building/enemy layers, and player/objective/proposal markers.

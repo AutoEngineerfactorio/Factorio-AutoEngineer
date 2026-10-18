@@ -4,7 +4,7 @@ This is a supervised experimental source package, not an unattended agent or ins
 
 ## Prerequisites
 
-Windows; Python 3.12 with Tkinter; Git; the .NET 9 SDK/runtime used by this prototype; a local llama.cpp/Qwen server serving an OpenAI-compatible API; and a separately configured, localhost-only disposable Factorio server with exactly one connected player. Game files, models, backend vendor checkout and binaries are not bundled. These installation checks used existing OS/runtime prerequisites; they are not a clean-OS test or a certification of the underlying runtime's security support.
+Windows; Python 3.12 with Tkinter; Git; the .NET 9 SDK/runtime used by this prototype; a local llama.cpp server (Phi-4-mini by default, Qwen optional) serving an OpenAI-compatible API; and a separately configured, localhost-only disposable Factorio server with exactly one connected player. Game files, models, backend vendor checkout and binaries are not bundled. These installation checks used existing OS/runtime prerequisites; they are not a clean-OS test or a certification of the underlying runtime's security support.
 
 ## Install Python dependencies
 
@@ -63,3 +63,7 @@ Remove-Item Env:FACTORIO_RCON_PASSWORD
 ```
 
 Structured per-session events are in `.local/events/`; backend working state is in `.local/backend/`. Both are ignored and excluded from packages. Events avoid model text and credentials. Review [dispatch audit](DISPATCH_AUDIT.md) for the exact boundary and remaining limits, and [hardening validation](HARDENING_VALIDATION.md) for evidence. No legacy execution experiments are shipped in the approved package.
+
+## Model and movement update
+
+Use [model selection](MODEL_SELECTION.md) to launch Phi-4-mini or retain Qwen. This release requires the policy-v7 backend rebuild. For smooth local scripted movement, the tested configuration hosts the same disposable save in the graphical game using private loopback RCON; see [normal movement and hosting](NORMAL_MOVEMENT.md). A joined multiplayer client can still show prediction corrections. Keep separate test data and main saves isolated.
