@@ -1,6 +1,6 @@
 # Backend safety patch
 
-This patch accompanies the supervised Python controller. It was built and tested in a separate backend copy; the original working backend was left unchanged. No existing license was modified. Upstream attribution and provenance review still apply; this patch is not a complete backend distribution.
+This patch accompanies the supervised Python controller. It was built and tested in a separate backend copy; the original working backend was left unchanged. The upstream backend MIT license is unchanged and reproduced in [third-party notices](../THIRD_PARTY_NOTICES.md). Original AutoEngineer additions use the [project MIT license](../LICENSE). Upstream attribution and provenance review still apply; this patch is not a complete backend distribution.
 
 ## Contents
 
