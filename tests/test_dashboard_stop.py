@@ -15,6 +15,7 @@ class DashboardStopTests(unittest.TestCase):
     def dashboard(self):
         view = Dashboard.__new__(Dashboard)
         view.proc = SimpleNamespace(poll=lambda: None, stdin=io.StringIO())
+        view.current_mode = 'semi'
         view.observer = None
         view.q = queue.Queue()
         view.stop_requested = False

@@ -14,6 +14,7 @@ from movement_proposals import movement_choices, resolve_choice
 from session_safety import ConsoleControl
 from offline_loop import OfflineLoop
 import supervised_agent as agent
+from mode_policy import ModePolicy, SEMI
 
 
 class ObjectiveTests(unittest.TestCase):
@@ -56,7 +57,7 @@ class ObjectiveSessionTests(unittest.IsolatedAsyncioTestCase):
             control = ConsoleControl(); control.approve = AsyncMock()
             session = SimpleNamespace(call_tool=AsyncMock())
             with patch.object(agent, 'load_objective', return_value=objective), patch.object(agent, 'load_memory', return_value=None), patch.object(agent, 'read_tool', AsyncMock(return_value={'x': 0, 'y': 0})), patch.object(agent, 'daemon_call', AsyncMock()) as planner, redirect_stdout(io.StringIO()):
-                await agent.run_cycles(session, control, 'a'*32)
+                await agent.run_cycles(session, control, 'a'*32, policy=ModePolicy(SEMI))
             planner.assert_not_called(); control.approve.assert_not_called(); session.call_tool.assert_not_called()
 
     async def test_objective_arrival_ends_session_after_one_approved_step(self):
@@ -65,7 +66,7 @@ class ObjectiveSessionTests(unittest.IsolatedAsyncioTestCase):
         session = SimpleNamespace(call_tool=AsyncMock(return_value=response))
         reads = [{'x': 0, 'y': 0}, {}, {}, {'x': 0, 'y': 0}, {'x': 4, 'y': 0}]
         with patch.object(agent, 'load_objective', return_value=Objective('4,0')), patch.object(agent, 'load_memory', return_value=None), patch.object(agent, 'read_tool', AsyncMock(side_effect=reads)), patch.object(agent, 'daemon_call', AsyncMock(return_value={'action': 'walk', 'x': 4, 'y': 0})), redirect_stdout(io.StringIO()) as output:
-            await agent.run_cycles(session, control, 'a'*32)
+            await agent.run_cycles(session, control, 'a'*32, policy=ModePolicy(SEMI))
         self.assertEqual(control.approve.await_count, 1)
         self.assertEqual(session.call_tool.await_count, 1)
         self.assertIn('Objective reached', output.getvalue())
@@ -75,6 +76,7 @@ class DashboardObjectiveTests(unittest.TestCase):
     def test_invalid_goal_does_not_start_child(self):
         from autoengineer_dashboard import Dashboard
         view = Dashboard.__new__(Dashboard)
+        view.current_mode = SEMI
         view.closing = False
         view.proc = None
         view.objective = Mock()

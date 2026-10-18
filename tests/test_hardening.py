@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'agent'))
+from mode_policy import ModePolicy, SEMI
 from dispatch_boundary import DispatchBoundary, ALLOWED
 from agent_events import EventLog
 from movement_watchdog import monitored_walk, MovementStalled
@@ -25,14 +26,14 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_unlisted_tools_and_extra_arguments_never_reach_transport(self):
         raw=NS(call_tool=AsyncMock())
-        boundary=DispatchBoundary(raw)
+        boundary=DispatchBoundary(raw, policy=ModePolicy(SEMI))
         for name,args in [('execute_lua',{'code':'bad'}),('scan_resources',{'radius':50,'centerX':0})]:
             with self.assertRaises(PermissionError): await boundary.call_tool(name,arguments=args)
         raw.call_tool.assert_not_called()
 
     async def test_approval_is_single_use_and_bound_to_exact_arguments(self):
         raw=NS(call_tool=AsyncMock(return_value=response({})))
-        boundary=DispatchBoundary(raw)
+        boundary=DispatchBoundary(raw, policy=ModePolicy(SEMI))
         args={'targetX':1,'targetY':0,'safetyOwner':'a'*32,'tolerance':.75,'timeoutSeconds':20}
         with self.assertRaises(PermissionError): await boundary.call_tool('walk_to_position',arguments=args)
         boundary.approve(args,'y')
@@ -46,7 +47,7 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
     async def test_cancel_after_approval_revokes_dispatch(self):
         stop=asyncio.Event()
         raw=NS(call_tool=AsyncMock())
-        boundary=DispatchBoundary(raw,NS(stop=stop))
+        boundary=DispatchBoundary(raw,NS(stop=stop),ModePolicy(SEMI))
         args={'targetX':1,'targetY':0,'safetyOwner':'a'*32,'tolerance':.75,'timeoutSeconds':20}
         boundary.approve(args,'y');stop.set()
         with self.assertRaises(PermissionError): await boundary.call_tool('walk_to_position',arguments=args)
@@ -54,19 +55,19 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_broad_backend_refused(self):
         raw=NS(list_tools=AsyncMock(return_value=NS(tools=[NS(name=k) for k in ALLOWED]+[NS(name='execute_lua')])))
-        with self.assertRaises(RuntimeError): await DispatchBoundary(raw).verify()
+        with self.assertRaises(RuntimeError): await DispatchBoundary(raw, policy=ModePolicy(SEMI)).verify()
 
     async def test_policy_mismatch_refused(self):
         raw=NS(list_tools=AsyncMock(return_value=NS(tools=[NS(name=k) for k in ALLOWED])),call_tool=AsyncMock(return_value=response({'version':1})))
-        with self.assertRaises(RuntimeError): await DispatchBoundary(raw).verify()
+        with self.assertRaises(RuntimeError): await DispatchBoundary(raw, policy=ModePolicy(SEMI)).verify()
 
     async def test_old_backend_without_route_checks_refused(self):
         raw=NS(list_tools=AsyncMock(return_value=NS(tools=[NS(name=k) for k in ALLOWED])),call_tool=AsyncMock(return_value=response({'version':2,'max_walk':5,'restricted':True})))
-        with self.assertRaises(RuntimeError): await DispatchBoundary(raw).verify()
+        with self.assertRaises(RuntimeError): await DispatchBoundary(raw, policy=ModePolicy(SEMI)).verify()
 
     async def test_backend_without_dashboard_policy_refused(self):
         raw=NS(list_tools=AsyncMock(return_value=NS(tools=[NS(name=k) for k in ALLOWED])),call_tool=AsyncMock(return_value=response({'version':3,'max_walk':5,'restricted':True})))
-        with self.assertRaises(RuntimeError): await DispatchBoundary(raw).verify()
+        with self.assertRaises(RuntimeError): await DispatchBoundary(raw, policy=ModePolicy(SEMI)).verify()
 
     async def test_stationary_live_call_is_cancelled_by_watchdog(self):
         cancelled=asyncio.Event()
@@ -96,7 +97,7 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(agent,'MAX_ACTIONS',2),patch.object(agent,'read_tool',AsyncMock(return_value={'x':0,'y':0})),patch.object(agent,'daemon_call',AsyncMock(return_value=decision)),patch.object(agent,'emit') as events:
             import io
             from contextlib import redirect_stdout
-            with redirect_stdout(io.StringIO()): await agent.run_cycles(raw,control,'a'*32)
+            with redirect_stdout(io.StringIO()): await agent.run_cycles(raw,control,'a'*32, policy=ModePolicy(SEMI))
         self.assertEqual(raw.call_tool.await_count,1)
         self.assertIn('movement_repeated',[c.args[0] for c in events.call_args_list])
 

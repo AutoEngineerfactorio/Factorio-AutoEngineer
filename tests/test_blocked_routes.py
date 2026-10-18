@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
 import supervised_agent as agent
+from mode_policy import ModePolicy, SEMI
 from movement_proposals import movement_choices
 from session_safety import ConsoleControl, StopRequested
 from offline_loop import OfflineLoop
@@ -53,9 +54,9 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
         planner = AsyncMock(return_value={'action': 'walk', 'x': 4, 'y': 0})
         with patch.object(agent, 'MAX_ACTIONS', 2), patch.object(agent, 'read_tool', side_effect=read), patch.object(agent, 'daemon_call', planner), redirect_stdout(io.StringIO()):
             if stop:
-                with self.assertRaises(StopRequested): await agent.run_cycles(session, control, 'a'*32)
+                with self.assertRaises(StopRequested): await agent.run_cycles(session, control, 'a'*32, policy=ModePolicy(SEMI))
             else:
-                await agent.run_cycles(session, control, 'a'*32)
+                await agent.run_cycles(session, control, 'a'*32, policy=ModePolicy(SEMI))
         return session, control, planner
 
     async def test_known_route_failures_offer_fresh_approval_without_auto_dispatch(self):

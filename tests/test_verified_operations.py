@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'agent'))
 from verified_operations import validate_operation, run_operation, inventory
+from mode_policy import ModePolicy, SEMI
 from dispatch_boundary import DispatchBoundary
 from session_safety import ConsoleControl, StopRequested
 from offline_loop import OfflineLoop
@@ -51,7 +52,7 @@ class OperationTests(unittest.IsolatedAsyncioTestCase):
                 views+=1
                 return result(view() if views==1 else view(plate=0 if kind=='craft' else 2,gear=0 if wrong else int(kind=='craft'),ore=int(kind=='mine')))
             return result(dict(status='verified',resource_before=10,resource_after=9))
-        boundary=DispatchBoundary(NS(call_tool=call),control)
+        boundary=DispatchBoundary(NS(call_tool=call),control,ModePolicy(SEMI))
         with redirect_stdout(io.StringIO()) as output:
             await run_operation(boundary,control,'a'*32,operation)
         return calls,output.getvalue()
@@ -78,7 +79,7 @@ class OperationTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeError):await self.scenario(wrong=True)
 
     async def test_permit_is_bound_to_tool_and_single_use(self):
-        raw=NS(call_tool=AsyncMock(return_value=result({})));boundary=DispatchBoundary(raw)
+        raw=NS(call_tool=AsyncMock(return_value=result({})));boundary=DispatchBoundary(raw, policy=ModePolicy(SEMI))
         args=dict(kind='mine',name='coal',count=1,safetyOwner='a'*32,targetX=0,targetY=1)
         with self.assertRaises(PermissionError):await boundary.call_tool('autoengineer_operation',args)
         boundary.approve(args,'y')

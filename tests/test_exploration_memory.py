@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'agent'))
 from exploration_memory import ExplorationMemory
 from movement_proposals import movement_choices
 import supervised_agent as agent
+from mode_policy import ModePolicy, SEMI
 from session_safety import ConsoleControl, StopRequested
 from offline_loop import OfflineLoop
 
@@ -86,7 +87,7 @@ class MemoryDispatchTests(unittest.IsolatedAsyncioTestCase):
         response = SimpleNamespace(is_error=False, content=[SimpleNamespace(type='text', text='{"status":"no_path"}')])
         session = SimpleNamespace(call_tool=AsyncMock(return_value=response))
         with patch.object(agent, 'load_memory', return_value=memory), patch.object(agent, 'MAX_ACTIONS', 1), patch.object(agent, 'read_tool', AsyncMock(return_value={'x': 0, 'y': 0})), patch.object(agent, 'daemon_call', AsyncMock(return_value={'action': 'walk', 'x': 4, 'y': 0})), redirect_stdout(io.StringIO()):
-            await agent.run_cycles(session, control, 'a'*32)
+            await agent.run_cycles(session, control, 'a'*32, policy=ModePolicy(SEMI))
         return session
 
     async def test_failed_dispatch_survives_restart_and_blocks_even_injected_proposal(self):

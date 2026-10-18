@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
 import supervised_agent as agent
+from mode_policy import ModePolicy, SEMI
 from session_safety import ConsoleControl, StopRequested
 from offline_loop import OfflineLoop
 
@@ -29,7 +30,7 @@ class DispatchTests(unittest.IsolatedAsyncioTestCase):
         decision = {"action": "walk", "x": 1, "y": 0}
         with patch.object(agent, "read_tool", side_effect=read), patch.object(agent, "daemon_call", AsyncMock(return_value=decision)), redirect_stdout(io.StringIO()):
             with self.assertRaises(StopRequested):
-                await agent.run_cycles(session, control, "a" * 32)
+                await agent.run_cycles(session, control, "a" * 32, policy=ModePolicy(SEMI))
         session.call_tool.assert_not_called()
 
     async def test_approved_dispatch_carries_session_owner(self):
@@ -40,7 +41,7 @@ class DispatchTests(unittest.IsolatedAsyncioTestCase):
         reads = [{"x": 0, "y": 0}, {}, {}, {"x": 0, "y": 0}, {"x": 1, "y": 0}]
         decision = {"action": "walk", "x": 1, "y": 0}
         with patch.object(agent, "MAX_ACTIONS", 1), patch.object(agent, "read_tool", AsyncMock(side_effect=reads)), patch.object(agent, "daemon_call", AsyncMock(return_value=decision)), redirect_stdout(io.StringIO()):
-            await agent.run_cycles(session, control, "a" * 32)
+            await agent.run_cycles(session, control, "a" * 32, policy=ModePolicy(SEMI))
         self.assertEqual(session.call_tool.call_args.kwargs["arguments"]["safetyOwner"], "a" * 32)
         self.assertEqual(session.call_tool.call_args.args[0], "walk_to_position")
 
@@ -50,5 +51,5 @@ class DispatchTests(unittest.IsolatedAsyncioTestCase):
         session = SimpleNamespace(call_tool=AsyncMock())
         decision = {"action": "walk", "x": 1, "y": 0}
         with patch.object(agent, "MAX_ACTIONS", 1), patch.object(agent, "read_tool", AsyncMock(return_value={"x": 0, "y": 0})), patch.object(agent, "daemon_call", AsyncMock(return_value=decision)), redirect_stdout(io.StringIO()):
-            await agent.run_cycles(session, control, "a" * 32)
+            await agent.run_cycles(session, control, "a" * 32, policy=ModePolicy(SEMI))
         session.call_tool.assert_not_called()
