@@ -1,14 +1,30 @@
-[
-  {
-    "file": "FactorioMCP/Services/FactorioService.cs",
-    "original_sha256": "3193b73eaa3f5aae89a8831b40e0ac8d32b4aa9b29622eacce2eaae5580cd5bf"
-  },
-  {
-    "file": "FactorioMCP/Services/PathfindingService.cs",
-    "original_sha256": "0ef9b339907ee1c4ea03802de7274979d8aaaa90f8f1373ca1e3c0f3088083cb"
-  },
-  {
-    "file": "FactorioMCP/Tools/MovementTools.cs",
-    "original_sha256": "94a98a08c61abcc3610dc279cd47e0c42d3dadc2935a08527c748236bd3b97f2"
-  }
-]
+{
+  "upstream": "https://github.com/sbarisic/FactorioMCP.git",
+  "revision": "f2fca61707efe3107e7a3738bb83d1505b0126f7",
+  "files": [
+    {
+      "file": "FactorioMCP/FactorioMCP.csproj",
+      "upstream_lf_sha256": "8f4b678dee704a9249e557e7a4a6dbe20360ce863c34755bf464685de267323d"
+    },
+    {
+      "file": "FactorioMCP/Program.cs",
+      "upstream_lf_sha256": "7aae3a7993524a31a47b27c7d19234974aee4d6214d70262de412e4d43149fac"
+    },
+    {
+      "file": "FactorioMCP/Services/FactorioService.cs",
+      "upstream_lf_sha256": "eb030e16f084e2b6687850ffac4e2d368811b00bcc74800dbb70eb963e511775"
+    },
+    {
+      "file": "FactorioMCP/Services/PathfindingService.cs",
+      "upstream_lf_sha256": "363c38b2fbef5eebcdeb3540f29bf716a35d6a6b5b28de0df2275ea9bedf5b43"
+    },
+    {
+      "file": "FactorioMCP/Services/RconConnectionService.cs",
+      "upstream_lf_sha256": "9e2ac371b2044278495f7c99f29accf7acd603e8b559250288cea799ba914b17"
+    },
+    {
+      "file": "FactorioMCP/Tools/MovementTools.cs",
+      "upstream_lf_sha256": "a05e31bdf9a3ab4d694c2164d0c31ce60f90c49ea2665dd4bf261600b55062df"
+    }
+  ]
+}

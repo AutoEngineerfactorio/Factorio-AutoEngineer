@@ -79,4 +79,17 @@ internal sealed class SafetyTools(RconClient rcon)
             rcon.print('{"version":1,"status":"stopped","walking":false}')
             """, cancellationToken);
     }
+    [McpServerTool(Name = "autoengineer_status"), Description("Read owning lease movement state outside the gameplay queue.")]
+    public Task<string> Status(string owner, CancellationToken cancellationToken = default)
+    {
+        var id = Owner(owner);
+        return rcon.ExecuteLuaAsync($$"""
+            local s = storage.autoengineer_safety
+            local p = s and game.get_player(s.player)
+            if not s or s.owner ~= {{id}} or s.stopped or game.tick >= s.deadline or not p or not p.character or #game.connected_players ~= 1 then
+                rcon.print('{"version":1,"status":"inactive"}') return
+            end
+            rcon.print(helpers.table_to_json({version=1,status="active",x=p.position.x,y=p.position.y,tick=game.tick,walking=p.walking_state.walking}))
+            """, cancellationToken);
+    }
 }
