@@ -55,6 +55,10 @@ The actual dashboard Stop and Close controls, process-loss behavior and connecti
 
 ## Contributing
 
+Persistent visited-area and failed-target memory is available locally; select a
+world identifier before launching. See [exploration memory](docs/EXPLORATION_MEMORY.md)
+for setup, reset behavior and limitations.
+
 Suggestions, testing feedback, bug reports, and contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Project website
