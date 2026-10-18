@@ -28,7 +28,7 @@
  </Project>
 --- a/FactorioMCP/Program.cs
 +++ b/FactorioMCP/Program.cs
-@@ -1,68 +1,28 @@
+@@ -1,68 +1,34 @@
 -﻿using FactorioMCP.Rcon;
 +using FactorioMCP.Rcon;
  using FactorioMCP.Services;
@@ -40,6 +40,9 @@
  using ModelContextProtocol.Server;
 -using System.Text.Json;
  
++var mode = Environment.GetEnvironmentVariable("AUTOENGINEER_BACKEND_MODE") ?? "helper";
++if (mode is not ("helper" or "semi"))
++    throw new InvalidOperationException("Unknown or locked AutoEngineer operating mode");
  var builder = Host.CreateApplicationBuilder(args);
 -
 -builder.Services
@@ -104,6 +107,9 @@
 +            if (!AutoEngineerTools.Allowed.TryGetValue(context.Params.Name, out var keys) ||
 +                (context.Params.Arguments is { } arguments && arguments.Keys.Any(k => !keys.Contains(k))))
 +                throw new InvalidOperationException("Dispatch denied by AutoEngineer policy");
++            if (mode != "semi" && context.Params.Name is not
++                ("autoengineer_operation_preview" or "autoengineer_view" or "autoengineer_policy" or "get_player_position" or "scan_resources" or "get_nearby_entities" or "autoengineer_status" or "autoengineer_stop"))
++                throw new InvalidOperationException("AI Helper denies gameplay writes and lease activation");
 +            return await next(context, ct);
 +        };
          filters.AddCallToolFilter(filter);
@@ -341,7 +347,7 @@
  
 --- /dev/null
 +++ b/FactorioMCP/Tools/AutoEngineerTools.cs
-@@ -0,0 +1,149 @@
+@@ -0,0 +1,151 @@
 +using FactorioMCP.Services;
 +using FactorioMCP.Rcon;
 +using ModelContextProtocol.Server;
@@ -363,7 +369,9 @@
 +    };
 +
 +    [McpServerTool(Name = "autoengineer_policy"), Description("Report the restricted AutoEngineer dispatch policy.")]
-+    public string Policy() => "{\"version\":5,\"max_walk\":5,\"restricted\":true}";
++    public string Policy() => System.Text.Json.JsonSerializer.Serialize(new {
++        version=6, max_walk=5, restricted=true,
++        mode=Environment.GetEnvironmentVariable("AUTOENGINEER_BACKEND_MODE") ?? "helper" });
 +
 +    [McpServerTool(Name = "autoengineer_view"), Description("Read bounded single-player position and main inventory; no game actions.")]
 +    public Task<string> View(CancellationToken cancellationToken = default) =>
