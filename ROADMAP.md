@@ -2,6 +2,11 @@
 
 This is a planning roadmap, not a promise of release dates.
 
+The target is autonomous operation with human supervision: the agent plans and
+executes routine actions within agreed limits, while the user can monitor, pause,
+override or stop it. Risky or out-of-scope decisions require approval. Per-movement
+approval remains a development safeguard until supervised autonomy is validated.
+
 Complete and validate coverage of all areas of vanilla Factorio, including Space Age,
 before starting modded compatibility work. Space Age is part of the vanilla scope
 for this project. Modded gameplay is the final phase.
@@ -26,7 +31,7 @@ for this project. Modded gameplay is the final phase.
 - [x] Persistent visited-area and failed-target map
 - [x] Objective-based navigation and path validation
 - [x] Efficient discovery of nearby resources
-- [ ] Live 2D dashboard map and inventory display
+- [x] Live 2D dashboard map and inventory display
 
 ## Phase 3 — Factory gameplay
 - [ ] Verified mining and crafting operations
