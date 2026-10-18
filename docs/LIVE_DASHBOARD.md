@@ -1,34 +1,23 @@
-# Live 2D map and inventory
+# Live map and player inventory
 
-Start a supervised session in the dashboard. The Live map and inventory tab shows
-the current player, observed resource centers, recent visited positions, failed
-targets, selected objective and proposed waypoint. The activity log is in a
-separate tab. Zoom changes only the display radius (24, 60 or 120 tiles); the map
-has no game-action click handler. Human approval remains on the existing buttons.
+Opening the dashboard starts a separate read-only observer. No model or AI session is needed.
+Starting/stopping the AI leaves observation running; closing the dashboard shuts down its observer and owned MCP process.
+Unavailable/disconnected reads mark the last snapshot stale; the observer retries without approving actions or arming a safety lease.
 
-Position and main inventory are read about once a second while the session is
-active, including while waiting for approval or for the model. The inventory
-shows item, quality and count. It excludes cursor, equipment grids and non-main
-inventories. The read is capped at 2000 slots and 64 item/quality groups; partial
-results are labeled. Empty inventory and unavailable inventory are distinct.
+Rebuild the current backend patch before use. The view tool keeps the same no-argument interface and policy-v5 restricted tool boundary.
+It reads the actual character position, surface and main inventory, including while the user is in remote view.
+The game-style map uses the running game's tile map colors, a palette-indexed one-tile raster,
+charted terrain with dimmed fog, visible resource/nature/building/enemy layers, and player/objective/proposal markers.
+Drag to pan, wheel or radius selector to zoom, and Follow player to recenter. Map gestures never move the player.
 
-The map is a schematic of observed markers, not a terrain renderer or collision
-map. Resource markers are aggregate centers, with their observation age shown
-separately from live telemetry age. Up to 16 resource types, 64 visited samples
-and 64 failed targets are displayed. Offscreen markers are clipped. Coordinates
-increase east/right and south/down; the grid is ten tiles. Colors have a legend.
+## Bounds and fidelity
+- A 256-by-256 tile window is read around the character. Panning or zooming beyond it shows black; it does not request distant observations.
+- Terrain is queried only in already charted chunks; entities only in currently visible chunks. No charting, chunk generation or revealing uncharted terrain.
+- Charted terrain is current server terrain, dimmed outside live visibility; it is not an exact reconstruction of Factorio's historical chart texture cache.
+- Entity limits are 2048 resources, 512 natural objects, 256 own-force buildings and 128 enemies. A partial indicator reports limits. Entity markers are simplified shapes, not game sprites.
+- The inventory preserves slot indices, empty slots, counts and quality badges for up to 200 main-inventory slots. Larger inventories show partial status; equipment, ammunition and trash are outside this view.
+- Item icons load from locally installed game PNGs, cropping the first square mip level. Set `AUTOENGINEER_FACTORIO_DATA` to the game's `data` folder for a nonstandard install. Missing icons use text labels. No proprietary game assets are included in the repository.
+- Old backends show an aggregate inventory fallback and unavailable terrain rather than fabricated data.
+- This is a map-style display, not a pixel-identical copy of the in-game UI. The dispatch boundary, human approval, five-tile limit and emergency stopping remain intact.
 
-Data older than three seconds or a failed read is marked stale; the previous
-snapshot remains visible. Session exit labels it as the last snapshot and stops
-polling. A surface change requests a safe session stop, avoiding mixing surfaces.
-The existing world ID must still match save, surface and player for persistent
-memory. Idle monitoring without an active supervised session is not implemented.
-
-Rebuild the separately obtained backend from the updated combined safety patch
-on its pinned upstream revision. The controller now requires policy v5 and the
-exact twelve-tool list, adding only autoengineer_view with no arguments. This direct,
-fixed Lua read bypasses the gameplay queue but cannot write game state or accept
-arbitrary Lua. Approval permits, path validation, five-tile target limits, safety
-lease and movement watchdog remain independent of the display. Telemetry failures
-do not authorize moves or delay game-side stop cleanup. Local display frames are
-not added to the structured agent event log.
+See [validation](DASHBOARD_MAP_VALIDATION.md) for tested behavior and limits.
