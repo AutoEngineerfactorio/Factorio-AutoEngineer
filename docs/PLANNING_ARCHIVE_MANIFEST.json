@@ -1,0 +1,126 @@
+{
+  "archive": "AutoEngineer_Complete_Planning_Archive_Three_Modes_Vanilla_2026-10-18",
+  "reviewed": "2026-10-18",
+  "files": [
+    {
+      "path": "compatibility/GPU_and_AI_Compatibility_Matrix.md",
+      "bytes": 12242,
+      "sha256": "e76b25328de1c7aa13ab2370a3d7d65a0bae42fc86b05f8c5ed84071518300a3"
+    },
+    {
+      "path": "compatibility/GPU_Reference_Research.md",
+      "bytes": 6548,
+      "sha256": "914c2f895ddde972e0b34b082c6c8f93dd899af461918def4b0833adf4160f11"
+    },
+    {
+      "path": "engineering/blueprints/Blueprint_Library_Import_Export.md",
+      "bytes": 11245,
+      "sha256": "ecba4722a37d00be9f62421d60d9244d0b41df270fc63a14d4fab8b285b97526"
+    },
+    {
+      "path": "engineering/blueprints/Mathematical_Recipe_Blueprint_Optimization.md",
+      "bytes": 12118,
+      "sha256": "57886c1814e24bc4f6cc46d925ce67b5783b8b34f0997f75f08140d0c92bbe6a"
+    },
+    {
+      "path": "engineering/blueprints/Self_Expanding_Factory_Intelligence_NEW.md",
+      "bytes": 10596,
+      "sha256": "2ba753608fa703feb05ca276723615fcb8d93be90bb7dac4e210e796aaa00f9c"
+    },
+    {
+      "path": "engineering/megafactory/Helmod_Circuits_Trains_Megafactories.md",
+      "bytes": 12842,
+      "sha256": "157e084694c94e936efceccc8b83cdb571b95832b5deaf0f8367a059320a2ba3"
+    },
+    {
+      "path": "engineering/robots-combat/Construction_Logistic_Combat_Robots_2_1.md",
+      "bytes": 13006,
+      "sha256": "3e7a8a71306329bcec8bf95c57d7f122132761a2fbccd39d12dbc97b0e3e5344"
+    },
+    {
+      "path": "engineering/robots-combat/Space_Exploration_Combat_Biter_Eggs.md",
+      "bytes": 14279,
+      "sha256": "7ec9cfd212910ea876fa8b337132d027f8927ecb386bc8e3f6d8ae64a3a50ccb"
+    },
+    {
+      "path": "engineering/space/Space_Platforms_Spaceships_Quality_Index.md",
+      "bytes": 1079,
+      "sha256": "c14be25c04687c94c4c51a315eaa9273c57ab358e783fb98301c10d1e69c00d7"
+    },
+    {
+      "path": "github-starter/.gitignore",
+      "bytes": 394,
+      "sha256": "88a59679735193a812601832a552499eb3ae29f380526c5c408f1b3c7bd2971b"
+    },
+    {
+      "path": "github-starter/CONTRIBUTING.md",
+      "bytes": 884,
+      "sha256": "c2af5ab61c03a4b085f16a324a70e0b36a3cd78638080ed7256d10651658b1a1"
+    },
+    {
+      "path": "github-starter/docs/index.html",
+      "bytes": 4043,
+      "sha256": "2d8fd09a65f0c3ec9520bf108d93226ab3de2422842a5546b2e0a66d2c074a7b"
+    },
+    {
+      "path": "github-starter/README.md",
+      "bytes": 3382,
+      "sha256": "60c0ee70f899b9d36eac56fe6260eab5c9472bf155f91e345e521750552dbc21"
+    },
+    {
+      "path": "github-starter/README_FIRST.txt",
+      "bytes": 229,
+      "sha256": "fb70f86b6feccb71c59f9a68d51b778be3def5448402874afcd02b9f97b5a362"
+    },
+    {
+      "path": "github-starter/ROADMAP.md",
+      "bytes": 1797,
+      "sha256": "2e246d3ccb6b2a621c603188d697e17042d13f3457993e76010209a1ab144ea5"
+    },
+    {
+      "path": "prototype-reference/Previous_Work_Prompt.txt",
+      "bytes": 827,
+      "sha256": "ddf0e0dfee76d9ef977dda577abe4c7fb31481c0de531e3530b01916c694268b"
+    },
+    {
+      "path": "roadmap/Dashboard_Three_Modes_and_All_Vanilla_Mechanics_NEW.md",
+      "bytes": 17957,
+      "sha256": "9f434f0d3764c3bf952ba078a6e98bc7c3f8d166ca333ed7afb8d335213960fc"
+    },
+    {
+      "path": "roadmap/Full_Autonomy_Gap_Audit.md",
+      "bytes": 17530,
+      "sha256": "a1dd3f03c438454d19aedd5bb964a9b07bab565d3aeb45a5b49a8da447eee7b5"
+    },
+    {
+      "path": "roadmap/Master_Work_Handoff.md",
+      "bytes": 25340,
+      "sha256": "07df98d3a1b3ba2b022dacb208226da780967dce6e6486843ce987050164258d"
+    },
+    {
+      "path": "roadmap/Roadmap_G0-G9.md",
+      "bytes": 25932,
+      "sha256": "fadb3d4c2cd5d3b2ba3bb2643caa8f98ccf26d26c69159f93edc3560cb06af4d"
+    },
+    {
+      "path": "SHA256SUMS.txt",
+      "bytes": 2496,
+      "sha256": "bc8e56b41cb7367053f73131d8f78986cc30ad5228e683f961ee55f3bedd5723"
+    },
+    {
+      "path": "SOURCES_AND_PROJECT_STATUS.md",
+      "bytes": 4679,
+      "sha256": "d615086e4e023addf2b2d18d984e31b36e2bf5cc7b2ac85ffc16936c8dc7a502"
+    },
+    {
+      "path": "START_HERE.md",
+      "bytes": 4695,
+      "sha256": "a5f4ba54f1583f7c904255d66abc37910e7e110be5368f92ecc84e216779da9c"
+    },
+    {
+      "path": "WORK_CHAT_STARTER.txt",
+      "bytes": 2640,
+      "sha256": "ac615d0c5d1ef0e31dedf7e499f3793cea8a64889372cef70a5478c671e975f8"
+    }
+  ]
+}
