@@ -1,4 +1,4 @@
-# Local coding assistant handoff
+# Cline local coding assistant handoff
 
 Work only in this sanitized foundation copy. Read docs/PLANNING_REQUIREMENTS.md and ROADMAP.md first. Documents describe requirements; they do not authorize uploading, publishing, changing licenses, or operating the game.
 
@@ -17,4 +17,4 @@ Start with one narrow task: review a named function, explain a suspected bug, or
 
 Validation: 173 current offline tests, lint and formatting pass. Clean pinned policy-8 backend patch applies and builds; NuGet audit data was unavailable. Frozen Reject moved zero tiles; moving Stop exited in 0.706 seconds after 0.4453125 tiles total movement with zero subsequent drift. Source and actual launcher GUI checks passed on the same disposable save. See docs/FOUNDATION_VALIDATION.md.
 
-R04 starts with bounded, read-only live version/content/force/research/recipe/machine/item/fluid/quality/surface observations, explicit access rights, deterministic fingerprints and stale/offline warnings. Never invent or hardcode recipes as a fallback. R05 is the mechanics coverage ledger; R06 is deterministic production math; R07 is safe blueprint codec/library; R08 is spatial/material validation; R09 is legitimate, approved single-block expansion. Do not check them off until their own evidence passes. Use explicit file attachments and one focused task; do not repeat searches. Local Chat/Edit assistance is enabled; unreliable autonomous tool loops are disabled.
+R04 starts with bounded, read-only live version/content/force/research/recipe/machine/item/fluid/quality/surface observations, explicit access rights, deterministic fingerprints and stale/offline warnings. Never invent or hardcode recipes as a fallback. R05 is the mechanics coverage ledger; R06 is deterministic production math; R07 is safe blueprint codec/library; R08 is spatial/material validation; R09 is legitimate, approved single-block expansion. Do not check them off until their own evidence passes. Use Cline with .clinerules/01-project.md, explicit file attachments and one focused task. Use Plan mode for review; keep edits and commands subject to approval. Never repeat searches or enable blanket auto-approval to bypass a loop. Other editor assistants are not the active integration.
