@@ -34,6 +34,15 @@ for this project. Modded gameplay is the final phase.
 - [x] Live 2D dashboard map and inventory display
 
 ## Phase 3 — Factory gameplay
+- [ ] Runtime capability registry: version, enabled expansions, research, surface, quality and charted observation rights
+- [ ] Durable goal graph and action journal: checkpoints, uncertain-result re-observation and duplicate-safe restart
+- [ ] Deterministic recipe/rate solver, machine ratios, material bills, layout constraints and measured throughput
+- [ ] Closed-loop shortage, brownout, fluid/heat, depletion and spoilage recovery
+- [ ] Construction/logistic robot capacity, coverage, charging and legitimate material checks
+- [ ] Separate Space Age platform engineering: asteroid processing, fuel, defense, cargo routes and safe return
+- [ ] Quality-aware production/recycling solver: expected yields, uncertainty and measured outcomes
+- [ ] Researched defense/combat, retreat/resupply, captive-spawner and biter-egg safety
+
 - [x] Verified starter mining and crafting operations (bounded basic resources, gears and cable)
 - [ ] Extend verified operations across vanilla and Space Age resources and recipes
 - [ ] Factorio-style dashboard map: terrain, water, resource patches, buildings, enemies, player markers, pan and zoom
@@ -59,6 +68,11 @@ for this project. Modded gameplay is the final phase.
 - [ ] Evaluate separate-player cooperative control feasibility
 
 ## Phase 5 — Vanilla completion and optional autonomy
+- [ ] Fresh-save beginner factory, sustained production/research and complete victory acceptance scenarios
+- [ ] Measured 1-hour/8-hour endurance, restart/network recovery, manual takeover and resource budgets
+- [ ] Launcher start/attach/health/stop lifecycle, provider adapters and tested hardware profiles
+- [ ] Separate optional game-version compatibility track; no automatic save migration
+
 - [ ] Audit and validate all vanilla systems, including multiplayer and remaining edge cases
 - [ ] Validate complete vanilla progression and recovery in the dedicated test save
 - [ ] Safe unattended execution with budgets, watchdogs, and recovery
@@ -67,6 +81,18 @@ for this project. Modded gameplay is the final phase.
 - [ ] Complete the vanilla and Space Age acceptance checklist before modded compatibility
 
 ## Phase 6 — Modded gameplay (last)
+- [ ] Separate Space Exploration profile and versioned spaceship adapter: hull/integrity, fuel, docking, cargo and victory
+- [ ] Mod-specific megafactory/logistics integrations after vanilla and Space Age acceptance
+
 - [ ] Runtime discovery of modded prototypes and recipes
 - [ ] Validate selected mod and overhaul compatibility
 - [ ] Revalidate movement, combat, blueprints, and safety for each supported mod
+
+## Detailed planning and acceptance gates
+
+The [reconciled work handoff](docs/WORK_HANDOFF_2026-10-18.md) and
+[full-autonomy gap audit](docs/FULL_AUTONOMY_GAP_AUDIT_2026-10-18.md) expand the requirements and G0–G9 acceptance gates.
+Their research leads are unverified until checked against primary sources and the installed game.
+Space Age remains vanilla scope; Space Exploration is modded and stays in Phase 6.
+G7 (SE) runs only after vanilla/Space Age completion, regardless of its numeric position.
+All new tasks remain unchecked; planning does not establish implementation or test coverage.

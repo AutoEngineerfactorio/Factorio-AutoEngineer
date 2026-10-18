@@ -76,3 +76,5 @@ Factorio is developed by Wube Software. Factorio AutoEngineer is an independent 
 The [live dashboard](docs/LIVE_DASHBOARD.md) displays a read-only observed map and main inventory during supervised sessions. It requires the current policy-v5 backend patch and rebuild.
 
 [Verified starter mining and crafting](docs/VERIFIED_OPERATIONS.md) is available through the dashboard, with batch limits, preflight checks, inventory verification and owned-operation stopping.
+
+Detailed future work: [reconciled handoff](docs/WORK_HANDOFF_2026-10-18.md) and [full-autonomy gap audit](docs/FULL_AUTONOMY_GAP_AUDIT_2026-10-18.md). Research candidates are not verified compatibility claims.
