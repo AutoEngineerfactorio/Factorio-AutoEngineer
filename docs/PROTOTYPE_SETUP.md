@@ -1,75 +1,65 @@
-# Prototype setup and safety checks
+# Tested source installation — Windows, Python 3.12
 
-This experimental source snapshot supports supervised testing on disposable Factorio worlds. It is not a validated public release or installer. Original AutoEngineer contributions use the [MIT License](../LICENSE). Preserve the backend attribution and other [third-party notices](../THIRD_PARTY_NOTICES.md).
-
-## Included
-
-Eight original Python prototype files, sanitized for credentials and installation paths, plus a shared configuration helper. No backend checkout, compiled binary, model weight, save, runtime data, log, credential, or backup is included. The repository also contains the project website and development roadmap.
+This is a supervised experimental source package, not an unattended agent or installer. Use a disposable Factorio 2.0 world only. Main saves must not be connected. MIT and third-party attribution are included separately.
 
 ## Prerequisites
 
-- Windows and Python 3.12, with Tkinter (`python -m tkinter` checks availability).
-- A separate Factorio 2.0 disposable test world with RCON configured by you.
-- A separately obtained FactorioMCP backend targeting .NET 9, with the included [`backend-safety/backend-safety.patch`](../backend-safety/backend-safety.patch) applied to a **separate backend copy** and rebuilt. The controller refuses an unpatched backend. See [backend safety instructions](../backend-safety/README.md). Its exact upstream revision and other local patches remain to be established.
-- A separately obtained llama.cpp server and model serving an OpenAI-compatible API. The example uses the model identifier from the prototype; set it to the identifier actually served by your local instance.
-- `requirements.txt` pins the direct MCP dependency to the version found in the local prototype's Python installation. This is not a transitive lockfile or proof of compatibility on a fresh machine.
+Windows; Python 3.12 with Tkinter; Git; the .NET 9 SDK/runtime used by this prototype; a local llama.cpp/Qwen server serving an OpenAI-compatible API; and a separately configured, localhost-only disposable Factorio server with exactly one connected player. Game files, models, backend vendor checkout and binaries are not bundled. These installation checks used existing OS/runtime prerequisites; they are not a clean-OS test or a certification of the underlying runtime's security support.
 
-## Local setup (PowerShell 7, from the repository root)
+## Install Python dependencies
+
+From the extracted project folder, in PowerShell 7:
 
 ```powershell
 py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install --require-hashes --only-binary=:all: -r requirements.lock
+.\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe -B -m unittest discover -s tests -q
+```
+
+The lock was resolved and tested for Windows CPython 3.12. Other platforms require separate validation. `requirements.txt` records the direct dependency; use the hash-pinned `requirements.lock` for installation. The package contains no virtual environment or downloaded wheels.
+
+## Obtain and build the separately attributed backend
+
+```powershell
+git clone https://github.com/sbarisic/FactorioMCP.git external/FactorioMCP
+git -C external/FactorioMCP checkout f2fca61707efe3107e7a3738bb83d1505b0126f7
+git -C external/FactorioMCP apply --check ../../backend-safety/backend-safety.patch
+git -C external/FactorioMCP apply ../../backend-safety/backend-safety.patch
+dotnet restore external/FactorioMCP/FactorioMCP/FactorioMCP.csproj --locked-mode
+dotnet build external/FactorioMCP/FactorioMCP/FactorioMCP.csproj -c Release --no-restore
+```
+
+Apply the current combined patch once to the exact upstream revision. Do not first apply an older safety patch or force patch mismatches. Preserve the upstream license and attribution. The patch adds a NuGet lockfile, disables broad tool/resource registration and removes image processing from this restricted profile. The default example DLL path matches these commands. The full backend checkout and its other tools are separate vendor source, excluded from this package.
+
+## Isolate configuration and credentials
+
+```powershell
 Copy-Item config.example.json config.local.json
 ```
 
-Edit `config.local.json` to point to your separately built backend DLL. Relative DLL and custom configuration paths resolve from this project folder, regardless of the current working directory. `dotnet_command` defaults to `dotnet` found on PATH; an executable path may be supplied in your ignored local configuration. Set `AUTOENGINEER_CONFIG` only if using a different configuration filename. JSON configuration never contains the RCON password. `.env` files are not loaded.
+Edit only this ignored configuration to set the disposable server's RCON port and the identifier actually reported by your local model server. RCON and model hosts must remain loopback. Paths in local JSON resolve from the extracted project, not the terminal's current folder. The default DLL path uses `external/FactorioMCP`; `dotnet` must be available on PATH or configured locally.
 
-Set the password interactively in the same terminal rather than putting its value into command history:
+Use a new, high-entropy password for the separately isolated disposable server. In the terminal that will launch the dashboard:
 
 ```powershell
-$env:FACTORIO_RCON_PASSWORD = Read-Host 'Test-world RCON password' -MaskInput
+$env:FACTORIO_RCON_PASSWORD = Read-Host 'Disposable-world RCON password' -MaskInput
 ```
 
-The dashboard inherits this environment and passes it to its controller. Missing passwords, backend files, or dotnet fail before the backend launches. Do not share `config.local.json` or environment dumps.
+The server must already be running with that same new password, a separate writable data directory and test-only save path, and localhost-only game/RCON bindings. Never start it with the normal client config or a main save. Do not put its password in project JSON or commit server settings. `.env` files are not loaded. This test rotated the retired disposable credentials, kept them only in private runtime files/environment, and used a fresh isolated world. Production or main-game credentials were not changed.
 
-## Entry points — read before running
-
-- `agent/autoengineer_dashboard.py`: primary dashboard; its Start button launches the supervised controller. Each proposed movement requires approval.
-- `agent/supervised_agent.py`: same controller from the console, up to three proposal cycles.
-- `agent/live_planner.py`: observations and model planning.
-- `agent/test_mcp_readonly.py`: live backend integration diagnostic; not an offline unit test.
-- `agent/inspect_mcp_tools.py`: backend tool schema inspection.
-- `agent/ai_movement.py` and `agent/safe_executor.py`: earlier experiments; `--execute` allows movement without the dashboard's per-action approval prompt. Omit that flag for dry-run mode.
-- `agent/main.py`: early simulated-observation model planning example, not the main controller.
-
-After reviewing the remaining safety limitations, a disposable-world session can be started with:
+## Run and stop
 
 ```powershell
 .\.venv\Scripts\python.exe agent/autoengineer_dashboard.py
 ```
 
-Remove the password from the terminal environment after the dashboard and its child processes have exited:
+Start a supervised session. Each proposed move requires Approve; Reject never dispatches movement. Stop cancels planning, approvals, movement and route recovery. Closing the dashboard uses cooperative stopping with a bounded fallback. Check for game-side stop acknowledgement, not merely a closed window. Lease expiry is 120 advancing simulation ticks; it is not a fixed wall-clock deadline.
+
+After the dashboard and backend exit:
 
 ```powershell
 Remove-Item Env:FACTORIO_RCON_PASSWORD
 ```
 
-## Emergency stopping
-
-`q`, `stop`, input closure, Ctrl+C, or the dashboard Stop button now cancel the supervised session during any phase. The controller requests a game-side stop on cancellation, normal completion and failure. It reports acknowledgement separately from an unconfirmed stop. Closing the dashboard uses this same shutdown path, with force termination only after a ten-second grace period.
-
-The backend patch requires a session-owned lease for walking, renews it through safety calls outside the gameplay queue, and clears walking/mining in the game tick handler when the lease expires or is stopped. Expiry is 120 game ticks (about two simulation seconds at 60 ticks/second), not a wall-clock deadline. It cannot be revived by a late heartbeat. A fresh explicit arm starts a new session. Exactly one connected player is required; multiplayer targeting is not implemented. Older movement experiments and other backend navigation paths without a lease owner now fail closed with this backend patch.
-
-Controller heartbeats run every 0.3 seconds and safety cleanup has a 1.5-second overall timeout. Stop confirmation is retried on later ticks within that budget, because Factorio can initially report the previous walking state. If transport is lost or the controller dies, the installed handler stops movement when the lease expires. Paused or slowed simulations affect wall-clock expiry time. Other code that replaces the game handler can invalidate this protection. This is a supervised safety improvement, not a hardened backend sandbox.
-
-## Offline checks and remaining release blockers
-
-```powershell
-.\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
-```
-
-The 34 offline tests use fake sessions, temporary configuration and a task-only event loop that cannot open network sockets. They cover cancellation, heartbeat failure, EOF, stale approvals, shutdown acknowledgement and dashboard session isolation. The backend patch was compiled in a separate local source copy using cached dependencies.
-
-Live checks subsequently passed in a newly generated disposable Factorio 2.0.77 world, with a separate patched backend and independent observer: Stop (7 observed game ticks), controller kill (107), backend kill (103) and backend RCON connection loss (107). Position remained stable for a further 72 game ticks after each observed stop. The fixture used slowed, deterministic five-tile movement rather than model-generated actions. Follow-up actual dashboard Stop and confirmed Close tests also passed during movement, with zero position drift over 120 further game ticks. A Close-dialog/controller-exit race was found and fixed; the window now closes even if its controller exits during confirmation. Pause/resume, stale-owner behavior and manual takeover remain follow-ups. No main save was used, and test processes were shut down afterward. These measurements are single-case observations, not universal real-time guarantees.
-
-Backend startup installs a game chat listener even for observation diagnostics. The existing backend dependency warnings, broader execution-boundary review, dependency provenance, clean installation, and authorship review remain open. Do not use important saves or unattended servers. Third-party components retain their existing licenses.
+Structured per-session events are in `.local/events/`; backend working state is in `.local/backend/`. Both are ignored and excluded from packages. Events avoid model text and credentials. Review [dispatch audit](DISPATCH_AUDIT.md) for the exact boundary and remaining limits, and [hardening validation](HARDENING_VALIDATION.md) for evidence. No legacy execution experiments are shipped in the approved package.

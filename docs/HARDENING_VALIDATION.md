@@ -1,0 +1,20 @@
+# Restricted-profile verification
+
+## Completed
+
+- **58 offline tests passed**, including the original safety and approval tests, closed dispatch, exact one-use approval permits, policy mismatch, cancellation after approval, repeated approved targets, independent watchdog timeout/lost telemetry, loopback configuration, parent-secret isolation, event redaction, and logging-storage failure.
+- **Nine direct live negative MCP requests were rejected**, with no player movement: raw Lua, unlisted mutations, oversized scans, unexpected remote-center arguments, a six-tile target, excessive tolerance, and a wrong lease owner. The service exposes exactly nine approved tools. The normal controller independently verifies this exact set and policy v2.
+- **Real Qwen on an uncleared disposable map:** one genuine blocked route, followed by two approved, verified arrivals. Final stop acknowledged; zero position drift over 180 further ticks.
+- **Stop during recovery:** after an approved blocked attempt, the normal stop input cancelled recovery before another approval or move. Exit code 0, game-side stop acknowledged, zero drift over 180 further ticks.
+- **Real stalled movement:** only the disposable character was immobilized. One route returned `no_path`, then two routes returned `stuck`; both were classified as stalled in structured events. No successful movement was falsely reported. The session stopped at its three-cycle cap, acknowledged game-side stopping, and stayed stationary for 180 further ticks. The independent watchdog's own forced-timeout and telemetry-loss paths were tested offline with short test clocks, not fault-injected into a live transport.
+- **Clean Python install:** a separate virtual environment installed the full lock using `--require-hashes --only-binary=:all: --no-cache-dir`; `pip check` and all tests passed. Python audit covered 29 resolved dependencies and reported no known vulnerabilities at the time of the check.
+- **Clean backend install:** a fresh checkout of the exact upstream revision accepted the combined patch; `dotnet restore --locked-mode` and Release build passed, with zero warnings and zero errors. A fresh-runtime direct MCP check also passed. The restricted backend no longer references ImageSharp or compiles its vision implementation; NuGet audit including transitive dependencies reported no known vulnerabilities. The old full upstream test project still references removed vision capabilities and is not the restricted-profile test suite.
+- **Credentials/configuration:** two retired disposable credential records were replaced with new high-entropy values; the live world used the rotated credential successfully. No original/main-server credentials were changed. Passwords remain private/environment-only for the project; backend working state and events are isolated under ignored `.local/`.
+
+## Audit and packaging
+
+See [dispatch audit](DISPATCH_AUDIT.md), [upstream inventory](UPSTREAM_TOOL_INVENTORY.json), and the two dependency audit JSON files. Audits are point-in-time findings, not a guarantee against all vulnerabilities. The image capability was removed because it lies outside the approved supervised prototype; its dependency warnings were not merely suppressed.
+
+The source package uses an explicit file allowlist and SHA-256 manifest. It includes approved project modules, tests, setup instructions, MIT license, preserved backend notice, and the source patch for the separately obtained backend. Legacy execution experiments, vendor checkout, binaries, models, saves, private settings, credentials, runtime logs, event data, backups and virtual environments are excluded. The installer instructions were exercised on existing Windows/Python/.NET/Factorio prerequisites; a clean operating-system installation was not tested.
+
+Main saves were never loaded or changed. All disposable game and test backend processes were shut down after verification. Nothing was uploaded, and the project/upstream licenses were not changed. See the dispatch audit for the remaining raw-RCON/local-code, single-player, tick-handler and paused-simulation limitations.

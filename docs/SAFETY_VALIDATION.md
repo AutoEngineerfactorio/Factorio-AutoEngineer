@@ -1,3 +1,5 @@
+> Historical safety-only test record. For the current restricted profile and 58-test suite, see [hardening validation](HARDENING_VALIDATION.md).
+
 # Prototype safety validation
 
 Tested October 17, 2026, with Factorio 2.0.77, a disposable single-player world, a separate patched backend and an independent game-state observer.

@@ -1,0 +1,582 @@
+[
+  {
+    "file": "FactorioMCP/Tools/BatchTools.cs",
+    "method": "MineEntityMultiple",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BatchTools.cs",
+    "method": "InspectEntityMultiple",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BatchTools.cs",
+    "method": "InsertItemsMultiple",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BatchTools.cs",
+    "method": "RefuelEntityMultiple",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BeltTools.cs",
+    "method": "PlanBeltRoute",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BlueprintTools.cs",
+    "method": "PlaceGhostEntity",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BlueprintTools.cs",
+    "method": "PlaceGhostBatch",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BlueprintTools.cs",
+    "method": "PlaceBlueprintString",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BlueprintTools.cs",
+    "method": "GetGhostEntities",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BlueprintTools.cs",
+    "method": "CreateBlueprintFromArea",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BlueprintTools.cs",
+    "method": "RevokeGhostEntity",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BlueprintTools.cs",
+    "method": "ValidateGhostPlacements",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BlueprintTools.cs",
+    "method": "DecodeBlueprintString",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BlueprintTools.cs",
+    "method": "EncodeBlueprintString",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BlueprintTools.cs",
+    "method": "AnalyzeBlueprint",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BlueprintTools.cs",
+    "method": "TraceBlueprintFlow",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BlueprintTools.cs",
+    "method": "AnalyzeBlueprintProduction",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BlueprintTools.cs",
+    "method": "ExecuteBuildPlan",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BuildingTools.cs",
+    "method": "GetAllBuildings",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BuildingTools.cs",
+    "method": "GetBuildingsNear",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BuildingTools.cs",
+    "method": "FindBuildingsByType",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BuildingTools.cs",
+    "method": "GetBuildingSummary",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BuildingTools.cs",
+    "method": "UpdateBuildingLabel",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BuildingTools.cs",
+    "method": "ClearBuildingMemory",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/BuildingTools.cs",
+    "method": "ValidateBuildingMemory",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/ChatTools.cs",
+    "method": "GetChatMessages",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/ChatTools.cs",
+    "method": "SendChatMessage",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/CombatTools.cs",
+    "method": "ScanEnemies",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/CombatTools.cs",
+    "method": "GetDefenses",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/EnergyTools.cs",
+    "method": "GetElectricNetwork",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/EnergyTools.cs",
+    "method": "InspectEntityPower",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/EnergyTools.cs",
+    "method": "GetPowerNetworkTopology",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/EntityTools.cs",
+    "method": "PlaceEntity",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/EntityTools.cs",
+    "method": "MineEntity",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/EntityTools.cs",
+    "method": "MineResource",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/EntityTools.cs",
+    "method": "PreviewInserterPlacement",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/EntityTools.cs",
+    "method": "RotateEntity",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/EntityTools.cs",
+    "method": "PlaceInserter",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/EntityTools.cs",
+    "method": "InsertBetween",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/EntityTools.cs",
+    "method": "PlaceEntitySmart",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/FactoryTools.cs",
+    "method": "FindUnpoweredEntities",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/FactoryTools.cs",
+    "method": "FindIdleMachines",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/FactoryTools.cs",
+    "method": "FindMissingInputs",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/FlowTools.cs",
+    "method": "GetFlowGraph",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/FlowTools.cs",
+    "method": "TraceItemFlow",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/FlowTools.cs",
+    "method": "PreviewBeltPlacement",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/GoalTools.cs",
+    "method": "SetGoal",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/GoalTools.cs",
+    "method": "GetActiveGoal",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/GoalTools.cs",
+    "method": "GetAllGoals",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/GoalTools.cs",
+    "method": "AdvanceGoalStep",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/GoalTools.cs",
+    "method": "AddGoalSteps",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/GoalTools.cs",
+    "method": "CompleteGoal",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/GoalTools.cs",
+    "method": "FailGoal",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/GoalTools.cs",
+    "method": "SuspendGoal",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/GoalTools.cs",
+    "method": "ResumeGoal",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/InteractionTools.cs",
+    "method": "InsertItems",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/InteractionTools.cs",
+    "method": "RemoveItems",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/InteractionTools.cs",
+    "method": "InspectEntity",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/InteractionTools.cs",
+    "method": "PickupItems",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/InventoryTools.cs",
+    "method": "GetInventory",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/InventoryTools.cs",
+    "method": "Craft",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/InventoryTools.cs",
+    "method": "GetCraftingQueue",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/InventoryTools.cs",
+    "method": "DropItems",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/InventoryTools.cs",
+    "method": "TransferAllItems",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/InventoryTools.cs",
+    "method": "GetEntityInventory",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/InventoryTools.cs",
+    "method": "GetInventorySummary",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/InventoryTools.cs",
+    "method": "EnsureItem",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/LogisticsTools.cs",
+    "method": "GetLogisticNetwork",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/LogisticsTools.cs",
+    "method": "GetNetworkContents",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/LogisticsTools.cs",
+    "method": "GetRobotStatus",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/LuaTools.cs",
+    "method": "ExecuteLua",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/LuaTools.cs",
+    "method": "ReconnectRcon",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/MovementTools.cs",
+    "method": "WalkToPosition",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/MovementTools.cs",
+    "method": "GetPlayerPosition",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/NavigationTools.cs",
+    "method": "MoveToEntity",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/NavigationTools.cs",
+    "method": "MoveToResource",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/NavigationTools.cs",
+    "method": "MoveToBuilding",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/PerceptionTools.cs",
+    "method": "SummarizeArea",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/PerceptionTools.cs",
+    "method": "WhatAmILookingAt",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/PerceptionTools.cs",
+    "method": "FindBuildableArea",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/ProductionTools.cs",
+    "method": "PlanSmelterLine",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/ProductionTools.cs",
+    "method": "PlanProduction",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/ProductionTools.cs",
+    "method": "ExportLayoutAsBlueprint",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/ProductionTools.cs",
+    "method": "PlanPowerPoles",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/RecipeTools.cs",
+    "method": "GetRecipeDetails",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/RecipeTools.cs",
+    "method": "GetAvailableRecipes",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/RecipeTools.cs",
+    "method": "GetTechnologyDetails",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/RecipeTools.cs",
+    "method": "CheckCraftFeasibility",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/RecipeTools.cs",
+    "method": "PlanCraft",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/RecipeTools.cs",
+    "method": "CalculateProductionRate",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/ResearchTools.cs",
+    "method": "GetResearchStatus",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/ResearchTools.cs",
+    "method": "GetAvailableTechnologies",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/ResearchTools.cs",
+    "method": "StartResearch",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/StatusTools.cs",
+    "method": "GetFactoryStatus",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/TargetTools.cs",
+    "method": "FindNearest",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/TargetTools.cs",
+    "method": "FindBestResourcePatch",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/TargetTools.cs",
+    "method": "GetClosestBuildingOfType",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/TaskTools.cs",
+    "method": "GatherResource",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/TaskTools.cs",
+    "method": "RefuelEntity",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/TaskTools.cs",
+    "method": "Smelt",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/TrainTools.cs",
+    "method": "GetTrains",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/TrainTools.cs",
+    "method": "GetTrainStops",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/TrainTools.cs",
+    "method": "InspectTrain",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/TrainTools.cs",
+    "method": "SetTrainMode",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/UtilityTools.cs",
+    "method": "CountItemInWorld",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/VisionTools.cs",
+    "method": "TakeScreenshot",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/WaitTools.cs",
+    "method": "WaitForCrafting",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/WaitTools.cs",
+    "method": "WaitForPosition",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/WaitTools.cs",
+    "method": "WaitForItemCount",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/WaitTools.cs",
+    "method": "WaitForEntityStatus",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/WaitTools.cs",
+    "method": "WaitForEntityInventory",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/WorldTools.cs",
+    "method": "GetNearbyEntities",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/WorldTools.cs",
+    "method": "CheckDistance",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/WorldTools.cs",
+    "method": "ScanResources",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/WorldTools.cs",
+    "method": "GetEntityPrototype",
+    "exposed_in_restricted_build": false
+  },
+  {
+    "file": "FactorioMCP/Tools/WorldTools.cs",
+    "method": "GetAreaOccupancy",
+    "exposed_in_restricted_build": false
+  }
+]
