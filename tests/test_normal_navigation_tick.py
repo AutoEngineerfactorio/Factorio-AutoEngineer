@@ -11,8 +11,8 @@ class TickTests(unittest.TestCase):
     def make(self,speed=.15,x=4,y=0,route=None):
         lua=LuaRuntime();lua.execute('''
           storage={autoengineer_safety={owner='a',player=1,deadline=5000,stopped=false}}
-          defines={events={on_tick=1},direction={north=0}}
-          player={valid=true,index=1,character={valid=true},surface={index=1},position={x=0,y=0},walking_state={walking=false,direction=0}}
+          defines={events={on_tick=1},direction={north=0},controllers={character=1,remote=2}}
+          player={valid=true,index=1,controller_type=1,driving=false,character={valid=true},surface={index=1},position={x=0,y=0},walking_state={walking=false,direction=0}}
           game={tick=0,connected_players={player},get_player=function() return player end}
           script={on_event=function(_,f) handler=f end}
           function step()
@@ -48,6 +48,12 @@ class TickTests(unittest.TestCase):
         for field in ('owner','surface'):
             lua=self.make();lua.globals().storage.autoengineer_nav[field]='other' if field=='owner' else 2
             self.assertEqual(self.run_to_stop(lua),'stopped')
+    def test_remote_view_and_vehicle_revoke_walking(self):
+        for mutation in ('player.controller_type=2','player.driving=true'):
+            lua=self.make();lua.globals().step();lua.execute(mutation)
+            lua.globals().step()
+            self.assertEqual(lua.globals().storage.autoengineer_nav.status,'stopped')
+            self.assertFalse(lua.globals().player.character.walking_state.walking)
     def test_lease_expiry_stops_existing_walk(self):
         lua=self.make();lua.globals().step();lua.globals().storage.autoengineer_safety.deadline=0
         self.assertEqual(self.run_to_stop(lua),'stopped')

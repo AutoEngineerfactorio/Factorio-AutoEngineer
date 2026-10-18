@@ -1,0 +1,22 @@
+{
+  "test_profile": true,
+  "game_mode": "graphical-host",
+  "profile_root": "test-world",
+  "llama_exe": "prerequisites/llama-server.exe",
+  "model_file": "models/model.gguf",
+  "factorio_exe": "prerequisites/factorio.exe",
+  "client_exe": "prerequisites/factorio.exe",
+  "server_config": "test-world/config.ini",
+  "client_config": "test-world/config.ini",
+  "server_mods": "test-world/mods",
+  "client_mods": "test-world/mods",
+  "server_settings": "test-world/server-settings.json",
+  "save_path": "test-world/data/saves/test-world.zip",
+  "mcp_server_dll": "external/FactorioMCP/FactorioMCP/bin/Release/net9.0/FactorioMCP.dll",
+  "secret_file": "test-world/rcon.secret.json",
+  "dotnet_command": "dotnet",
+  "game_port": 34208,
+  "rcon_port": 27108,
+  "llm_port": 8080,
+  "world_id": "my-isolated-test-world"
+}

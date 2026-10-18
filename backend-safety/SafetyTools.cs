@@ -32,6 +32,9 @@ internal sealed class SafetyTools(RconClient rcon)
             if #game.connected_players ~= 1 or not p or not p.character or not p.character.valid then
                 rcon.print('{"version":1,"status":"single_player_required"}') return
             end
+            if p.controller_type~=defines.controllers.character or p.driving then
+                rcon.print('{"version":1,"status":"character_control_required"}') return
+            end
             storage.walk_dir = nil
             storage.mine_state = nil
             p.walking_state = {walking=false, direction=defines.direction.north}
@@ -49,7 +52,7 @@ internal sealed class SafetyTools(RconClient rcon)
         return rcon.ExecuteLuaAsync($$"""
             local s = storage.autoengineer_safety
             local p = game.connected_players[1]
-            if not s or s.owner ~= {{id}} or s.stopped or game.tick >= s.deadline or #game.connected_players ~= 1 or not p or p.index ~= s.player then
+            if not s or s.owner ~= {{id}} or s.stopped or game.tick >= s.deadline or #game.connected_players ~= 1 or not p or p.index ~= s.player or p.controller_type~=defines.controllers.character or p.driving then
                 rcon.print('{"version":1,"status":"expired"}') return
             end
             s.deadline = game.tick + 120
@@ -84,7 +87,11 @@ internal sealed class SafetyTools(RconClient rcon)
                 end
                 op.status='stopped'
             end
-            if p and p.valid then
+            if p and p.character and p.character.valid then
+                p.character.walking_state={walking=false,direction=defines.direction.north}
+                p.character.mining_state={mining=false}
+            end
+            if p and p.valid and p.controller_type==defines.controllers.character then
                 p.walking_state = {walking=false, direction=defines.direction.north}
                 p.mining_state = {mining=false}
                 if p.walking_state.walking then
@@ -101,10 +108,10 @@ internal sealed class SafetyTools(RconClient rcon)
         return rcon.ExecuteLuaAsync($$"""
             local s = storage.autoengineer_safety
             local p = s and game.get_player(s.player)
-            if not s or s.owner ~= {{id}} or s.stopped or game.tick >= s.deadline or not p or not p.character or #game.connected_players ~= 1 then
+            if not s or s.owner ~= {{id}} or s.stopped or game.tick >= s.deadline or not p or not p.character or #game.connected_players ~= 1 or p.controller_type~=defines.controllers.character or p.driving then
                 rcon.print('{"version":1,"status":"inactive"}') return
             end
-            rcon.print(helpers.table_to_json({version=1,status="active",x=p.position.x,y=p.position.y,tick=game.tick,walking=p.walking_state.walking}))
+            rcon.print(helpers.table_to_json({version=1,status="active",x=p.character.position.x,y=p.character.position.y,tick=game.tick,walking=p.character.walking_state.walking}))
             """, cancellationToken);
     }
 }

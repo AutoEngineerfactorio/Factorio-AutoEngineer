@@ -5,11 +5,16 @@ script.on_event(defines.events.on_tick, function()
             local active = s and not s.stopped and game.tick < s.deadline
                 and #game.connected_players == 1 and selected and selected.index == s.player
                 and p and p.valid and p.character and p.character.valid
+                and p.controller_type==defines.controllers.character and not p.driving
             if not active then
+                if p and p.character and p.character.valid then
+                    p.character.walking_state={walking=false,direction=defines.direction.north}
+                    p.character.mining_state={mining=false}
+                end
                 local n=storage.autoengineer_nav
                 if n and n.status=='running' then
                     n.status='stopped'
-                    if p and p.valid then p.walking_state={walking=false,direction=defines.direction.north} end
+                    if p and p.valid and p.controller_type==defines.controllers.character then p.walking_state={walking=false,direction=defines.direction.north} end
                 end
                 local op=storage.operation
             if op and not op.status then
@@ -27,7 +32,7 @@ script.on_event(defines.events.on_tick, function()
             end
                 if s then s.stopped = true end
                 if storage.walk_dir ~= nil or storage.mine_state ~= nil then
-                    if p and p.valid then
+                    if p and p.valid and p.controller_type==defines.controllers.character then
                         p.walking_state = {walking=false, direction=defines.direction.north}
                         p.mining_state = {mining=false}
                     end

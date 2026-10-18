@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import json
 import math
 from pathlib import Path
+from app_runtime import data_root
 import threading
 import uuid
 
@@ -14,7 +15,7 @@ EVENTS = {"operation_proposal", "operation_verified", "operation_failed", "sessi
 
 class EventLog:
     def __init__(self, directory=None):
-        directory = Path(directory or Path(__file__).resolve().parents[1] / ".local/events")
+        directory = Path(directory or data_root() / ".local/events")
         directory.mkdir(parents=True, exist_ok=True)
         self.session = uuid.uuid4().hex
         self.path = directory / (self.session + ".jsonl")

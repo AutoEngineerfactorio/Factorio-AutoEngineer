@@ -5,6 +5,7 @@ import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import ttk
+from factorio_theme import PANEL, INSET, TEXT
 
 RESOURCE_COLORS = {'iron-ore':'#7699bf','copper-ore':'#cf743c','coal':'#26292c','stone':'#bdb28b','uranium-ore':'#79b627','crude-oil':'#be41bd'}
 QUALITY_COLORS = {'normal':'#bbb9ae','uncommon':'#68b64b','rare':'#529bea','epic':'#ae61d5','legendary':'#e6a135'}
@@ -50,13 +51,29 @@ class LiveView(ttk.Frame):
         self.offset={'x':0,'y':0}; self.drag=None; self.icons={}; self.slot_hits=[]
         self.status=tk.StringVar(value='Connecting live observer (AI can remain stopped)')
         self.zoom=tk.StringVar(value='128')
-        ttk.Label(self,textvariable=self.status).pack(anchor='w',padx=8,pady=4)
+        ttk.Label(self,textvariable=self.status,style='Muted.TLabel').pack(anchor='w',padx=8,pady=4)
         controls=ttk.Frame(self); controls.pack(fill='x',padx=8)
         ttk.Label(controls,text='Radius:').pack(side='left')
         zoom=ttk.Combobox(controls,textvariable=self.zoom,values=['24','60','128','200'],state='readonly',width=5)
         zoom.pack(side='left',padx=6); zoom.bind('<<ComboboxSelected>>',lambda _:self.draw())
         ttk.Button(controls,text='Follow player',command=self.recenter).pack(side='left')
-        ttk.Label(controls,text='Drag to pan · Wheel to zoom · Cyan player · Red enemies · Gold goal · Orange proposal').pack(side='left',padx=8)
+        ttk.Button(controls,text='−',width=3,command=lambda:self.change_zoom(1.25)).pack(side='left',padx=2)
+        ttk.Button(controls,text='+',width=3,command=lambda:self.change_zoom(.8)).pack(side='left',padx=2)
+        self.pointer=tk.StringVar(value='Drag to pan · Wheel to zoom · North up')
+        ttk.Label(controls,textvariable=self.pointer,style='Muted.TLabel').pack(side='left',padx=8)
+        layers=ttk.Menubutton(controls,text='Map layers ▾');layers.pack(side='right')
+        menu=tk.Menu(layers,tearoff=False);layers.configure(menu=menu)
+        self.layers={}
+        for key,label in [('resource','Resources'),('nature','Trees and rocks'),('building','Buildings'),('enemy','Enemies'),('history','Visited areas and failed targets'),('goals','Objective and proposed route'),('grid','Chunk grid'),('player_name','Player marker label')]:
+            self.layers[key]=tk.BooleanVar(value=key!='grid')
+            menu.add_checkbutton(label=label,variable=self.layers[key],command=self.draw)
+        menu.add_separator()
+        self.overlay_menu=menu;self.overlay_entries={}
+        for key,label in [('pollution','Pollution'),('electric','Electric supply and connections'),('logistics','Logistics and construction coverage'),('turrets','Turret nominal range'),('stations','Train stop names'),('tags','Map tags')]:
+            self.layers[key]=tk.BooleanVar(value=False)
+            menu.add_checkbutton(label=label+' — unavailable',variable=self.layers[key],command=self.draw,state='disabled')
+            self.overlay_entries[key]=(menu.index('end'),label)
+        ttk.Label(self,text='Local chart window · Visible entities only · Turret circles show nominal range, not combat readiness.',style='Muted.TLabel').pack(anchor='w',padx=8,pady=2)
         body=ttk.Panedwindow(self,orient='horizontal'); body.pack(fill='both',expand=True,padx=8,pady=6)
         map_frame=ttk.Frame(body); body.add(map_frame,weight=3)
         self.canvas=tk.Canvas(map_frame,background='#111416',highlightthickness=0,width=660,height=310)
@@ -65,12 +82,14 @@ class LiveView(ttk.Frame):
         self.canvas.bind('<ButtonPress-1>',self.pan_start)
         self.canvas.bind('<B1-Motion>',self.pan_move)
         self.canvas.bind('<MouseWheel>',self.wheel)
-        inventory=ttk.Frame(body,width=340); body.add(inventory,weight=1)
+        self.canvas.bind('<Motion>',self.map_pointer)
+        self.canvas.bind('<Double-Button-1>',lambda _:self.recenter())
+        inventory=ttk.Frame(body,width=425,padding=(8,4)); body.add(inventory,weight=1)
         self.inventory_status=tk.StringVar(value='Player main inventory: waiting')
-        ttk.Label(inventory,textvariable=self.inventory_status).pack(anchor='w')
+        ttk.Label(inventory,textvariable=self.inventory_status,style='Section.TLabel').pack(anchor='w')
         self.item_hint=tk.StringVar(value='Hover a slot for item and quality · Read-only')
-        ttk.Label(inventory,textvariable=self.item_hint,wraplength=330).pack(anchor='w',pady=4)
-        self.items=tk.Canvas(inventory,background='#242727',highlightthickness=0,width=410)
+        ttk.Label(inventory,textvariable=self.item_hint,wraplength=400,style='Muted.TLabel').pack(anchor='w',pady=4)
+        self.items=tk.Canvas(inventory,background=INSET,highlightthickness=0,width=410)
         self.items.pack(side='left',fill='both',expand=True)
         scroll=ttk.Scrollbar(inventory,orient='vertical',command=self.items.yview)
         scroll.pack(side='right',fill='y');self.items.configure(yscrollcommand=scroll.set)
@@ -91,10 +110,21 @@ class LiveView(ttk.Frame):
         self.offset={k:max(-128,min(128,old[k]-delta/scale)) for k,delta in [('x',e.x-x),('y',e.y-y)]}
         self.draw()
 
-    def wheel(self,e):
-        radius=float(self.zoom.get())
-        self.zoom.set(str(max(8,min(200,round(radius*(.8 if e.delta>0 else 1.25),1)))))
+    def change_zoom(self,factor):
+        self.zoom.set(str(max(8,min(200,round(float(self.zoom.get())*factor,1)))))
         self.draw()
+
+    def wheel(self,e):
+        self.change_zoom(.8 if e.delta>0 else 1.25)
+
+    def map_pointer(self,e):
+        if self.last is None:return
+        scale=min(self.canvas.winfo_width(),self.canvas.winfo_height())/(2*float(self.zoom.get()))
+        if scale<=0:return
+        player=self.last['position']
+        x=player['x']+self.offset['x']+(e.x-self.canvas.winfo_width()/2)/scale
+        y=player['y']+self.offset['y']+(e.y-self.canvas.winfo_height()/2)/scale
+        self.pointer.set(f'Cursor {x:.1f}, {y:.1f} · Drag to pan · Double-click to follow')
 
     def reset(self):
         self.last=None;self.received=None;self.available=False;self.offset={'x':0,'y':0}
@@ -133,7 +163,11 @@ class LiveView(ttk.Frame):
         lookup={v['slot']:v for v in slots};size=40;columns=10
         for i in range(capacity):
             x=(i%columns)*size+4;y=(i//columns)*size+4
-            self.items.create_rectangle(x,y,x+36,y+36,fill='#424745',outline='#171a19',width=2)
+            self.items.create_rectangle(x,y,x+36,y+36,fill='#3e4338',outline='#171b14',width=2)
+            self.items.create_line(x+2,y+2,x+34,y+2,fill='#252b20',width=2)
+            self.items.create_line(x+2,y+2,x+2,y+34,fill='#252b20',width=2)
+            self.items.create_line(x+2,y+35,x+35,y+35,fill='#5d6553')
+            self.items.create_line(x+35,y+2,x+35,y+35,fill='#5d6553')
             v=lookup.get(i+1)
             if v:
                 image=self.icon(v['name'])
@@ -160,6 +194,11 @@ class LiveView(ttk.Frame):
             for key in ('visited','failed','resources'):data[key]=[]
             data['objective']=data['proposal']=None
             self.offset={'x':0,'y':0}
+        overlays=data.get('terrain',{}).get('overlays',{})
+        for key,(index,label) in self.overlay_entries.items():
+            available=overlays.get('available',{}).get(key,False)
+            partial=overlays.get('partial',{}).get(key,False)
+            self.overlay_menu.entryconfigure(index,state='normal' if available else 'disabled',label=label+(' · partial' if partial else '')+('' if available else ' — unavailable'))
         self.last=data;self.received=time.monotonic();self.available=True
         self.inventory();self.draw()
 
@@ -197,7 +236,34 @@ class LiveView(ttk.Frame):
                 color='#'+''.join(f'{int(color[i:i+2],16)*2//3:02x}' for i in (1,3,5))
             step=terrain.get('step',2)
             self.canvas.create_rectangle(x,y,x+step*scale+1,y+step*scale+1,fill=color,outline='')
+        overlays=terrain.get('overlays',{})
+        self.canvas.create_rectangle(0,0,width,height,outline='',tags='overlay-boundary')
+        for key in self.overlay_entries:
+            if not self.layers[key].get() or not overlays.get('available',{}).get(key):continue
+            for e in overlays[key]:
+                x,y=loc(e)
+                if key=='pollution':
+                    if e['value']<=0:continue
+                    red=min(220,80+int(25*math.log1p(e['value'])))
+                    self.canvas.create_rectangle(x,y,x+e['width']*scale,y+e['height']*scale,fill=f'#{red:02x}3020',outline='',stipple='gray50')
+                elif key=='electric':
+                    r=e['radius']*scale
+                    self.canvas.create_rectangle(x-r,y-r,x+r,y+r,outline='#78b8ed',stipple='gray25',fill='#447799')
+                    for q in e['connections']:
+                        tx,ty=loc(q);self.canvas.create_line(x,y,tx,ty,fill='#e0ca5b')
+                elif key=='logistics':
+                    for field,color in [('construction','#68b568'),('logistic','#db9b42')]:
+                        r=e[field]*scale
+                        self.canvas.create_rectangle(x-r,y-r,x+r,y+r,outline=color,dash=() if e['active'] else (3,3))
+                elif key=='turrets':
+                    r=e['radius']*scale
+                    self.canvas.create_oval(x-r,y-r,x+r,y+r,outline='#df6672',dash=(3,3))
+                else:
+                    text=e['text'] or e.get('icon') or '(unnamed)'
+                    self.canvas.create_rectangle(x-3,y-3,x+3,y+3,fill='#e8b45b',outline='#1a1b17')
+                    self.canvas.create_text(x+7,y,anchor='w',text=text,fill='#f4e4b0',font=('Segoe UI',9,'bold'))
         for e in terrain.get('entities',[]):
+            if not self.layers[e['kind']].get():continue
             x,y=loc(e)
             if not 0<=x<=width or not 0<=y<=height:continue
             kind=e['kind'];size=max(.65,scale*.5) if kind=='resource' else max(1,scale*.7)
@@ -205,14 +271,24 @@ class LiveView(ttk.Frame):
             if kind=='resource':
                 self.canvas.create_rectangle(x-size,y-size,x+size,y+size,fill=color,outline='')
             else:self.canvas.create_rectangle(x-size,y-size,x+size,y+size,fill=color,outline='')
+        if self.layers['grid'].get():
+            for axis in ('x','y'):
+                extent=(width if axis=='x' else height)/(2*scale)
+                start=math.floor((center[axis]-extent)/32)*32
+                end=math.ceil((center[axis]+extent)/32)*32
+                for value in range(start,end+1,32):
+                    p=dict(center);p[axis]=value;x,y=loc(p)
+                    self.canvas.create_line(x,0,x,height,fill='#706f54',dash=(2,4)) if axis=='x' else self.canvas.create_line(0,y,width,y,fill='#706f54',dash=(2,4))
         for key,color in [('visited','#a9aaa0'),('failed','#ff6861')]:
+            if not self.layers['history'].get():continue
             for p in self.last[key]:
                 x,y=loc(p);self.canvas.create_oval(x-2,y-2,x+2,y+2,outline=color)
         px,py=loc(player)
         for key,color in [('objective','#ffda65'),('proposal','#ff9c5c')]:
             p=self.last[key]
-            if p:
+            if p and self.layers['goals'].get():
                 x,y=loc(p);self.canvas.create_line(px,py,x,y,fill=color,dash=(4,4));self.canvas.create_rectangle(x-5,y-5,x+5,y+5,outline=color,width=2)
         self.canvas.create_polygon(px,py-8,px+6,py+6,px-6,py+6,fill='#5ed7f5',outline='#101d20')
+        if self.layers['player_name'].get():self.canvas.create_text(px+10,py-10,anchor='w',text=overlays.get('player_name','Player'),fill='#5ed7f5')
         self.canvas.create_text(8,height-8,anchor='sw',fill='white',text=f"Player {player['x']:.2f}, {player['y']:.2f} | N up | Black: unobserved | Read-only")
         if not terrain:self.canvas.create_text(8,8,anchor='nw',fill='#ffda65',text='Terrain unavailable: rebuild display backend')

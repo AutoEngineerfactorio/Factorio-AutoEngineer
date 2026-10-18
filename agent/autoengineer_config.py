@@ -1,5 +1,6 @@
 """Local configuration only; importing this module never launches services."""
 from mode_policy import load_mode
+from app_runtime import data_root
 import ipaddress
 import json
 import os
@@ -7,7 +8,7 @@ from pathlib import Path
 import shutil
 from urllib.parse import urlsplit
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = data_root()
 DEFAULTS = {
     "dotnet_command": "dotnet",
     "mcp_server_dll": "external/FactorioMCP/FactorioMCP/bin/Release/net9.0/FactorioMCP.dll",
