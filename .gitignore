@@ -41,3 +41,9 @@ obj/
 # Windows
 Thumbs.db
 Desktop.ini
+
+# Local dependency checkouts and test-only runtime data
+external/
+*.private.*
+test-private.json
+work/

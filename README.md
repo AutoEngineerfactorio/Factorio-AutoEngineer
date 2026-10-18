@@ -49,7 +49,9 @@ Never commit passwords, API keys, saves, model weights, downloaded binaries, loc
 
 ## Getting started
 
-Installation instructions will be published **after** we assemble and test a clean public distribution. Until then, follow development in the [roadmap](ROADMAP.md).
+The supervised prototype source is available in [`agent/`](agent/). Follow the [setup and safety instructions](docs/PROTOTYPE_SETUP.md), including the required [backend safety patch](backend-safety/README.md). There is no validated installer or stable release.
+
+The actual dashboard Stop and Close controls, process-loss behavior and connection-loss behavior were tested in a disposable Factorio world. Read the [validation record and its limits](docs/SAFETY_VALIDATION.md). Further development is tracked in the [roadmap](ROADMAP.md).
 
 ## Contributing
 

@@ -1,0 +1,3 @@
+# Matches the MCP SDK version observed in the local Python 3.12 installation.
+# Direct dependency pin only; transitive dependencies are not locked yet.
+mcp==2.3.0

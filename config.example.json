@@ -1,0 +1,8 @@
+{
+  "dotnet_command": "dotnet",
+  "mcp_server_dll": "external/FactorioMCP/FactorioMCP/bin/Release/net9.0/FactorioMCP.dll",
+  "rcon_host": "127.0.0.1",
+  "rcon_port": 27015,
+  "llm_api_url": "http://127.0.0.1:8080/v1",
+  "llm_model": "qwen2.5-coder-7b-instruct"
+}
