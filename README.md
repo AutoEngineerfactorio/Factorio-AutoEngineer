@@ -73,4 +73,6 @@ Original Factorio-AutoEngineer code and documentation are licensed under the [MI
 
 Factorio is developed by Wube Software. Factorio AutoEngineer is an independent community project and is not affiliated with or endorsed by Wube Software.
 
-The [live dashboard](docs/LIVE_DASHBOARD.md) displays a read-only observed map and main inventory during supervised sessions. It requires the current policy-v4 backend patch and rebuild.
+The [live dashboard](docs/LIVE_DASHBOARD.md) displays a read-only observed map and main inventory during supervised sessions. It requires the current policy-v5 backend patch and rebuild.
+
+[Verified starter mining and crafting](docs/VERIFIED_OPERATIONS.md) is available through the dashboard, with batch limits, preflight checks, inventory verification and owned-operation stopping.

@@ -34,7 +34,10 @@ for this project. Modded gameplay is the final phase.
 - [x] Live 2D dashboard map and inventory display
 
 ## Phase 3 — Factory gameplay
-- [ ] Verified mining and crafting operations
+- [x] Verified starter mining and crafting operations (bounded basic resources, gears and cable)
+- [ ] Extend verified operations across vanilla and Space Age resources and recipes
+- [ ] Factorio-style dashboard map: terrain, water, resource patches, buildings, enemies, player markers, pan and zoom
+- [ ] Player-style inventory grid: item icons, stack counts and quality indicators; initially read-only
 - [ ] Resource-aware factory building and placement checks
 - [ ] Production, power, research, and recovery planning
 - [ ] Enemy detection, threat avoidance, and defensive building
