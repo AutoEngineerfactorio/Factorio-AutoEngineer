@@ -17,6 +17,7 @@ from agent_events import emit
 from dispatch_boundary import DispatchBoundary
 from exploration_memory import load_memory
 from navigation_objective import load_objective
+from resource_discovery import ResourceDiscovery
 
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
@@ -131,6 +132,7 @@ async def run_cycles(session, control, owner):
     attempted = []
     memory = load_memory()
     objective = load_objective()
+    discovery = ResourceDiscovery()
     print('Exploration memory: ' + ('enabled for the selected world' if memory else 'disabled; set AUTOENGINEER_WORLD for persistence'))
     for step in range(1, MAX_ACTIONS + 1):
         emit("proposal", cycle=step)
@@ -139,10 +141,13 @@ async def run_cycles(session, control, owner):
         position = await read_tool(
             session, "get_player_position"
         )
-        resources = await read_tool(
-            session, "scan_resources",
-            {"radius": 50}
-        )
+        resources = await discovery.observe(position, lambda: read_tool(
+            session, 'scan_resources', {'radius': 50}))
+        print('Resource discovery:', 'cached' if resources['cached'] else 'fresh',
+              'types:', len(resources['resources']), 'scans:', discovery.scans,
+              'cache hits:', discovery.hits, 'age:', resources['age_seconds'])
+        print('Observed resource centers:', ', '.join(
+            f"{r['name']} {r['distance']:.1f} tiles" for r in resources['resources'][:8]) or 'none')
         nearby = await read_tool(
             session, "get_nearby_entities",
             {"radius": 8}
