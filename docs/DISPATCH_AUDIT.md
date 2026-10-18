@@ -6,11 +6,11 @@ Reviewed the nine exposed implementations, their queued and direct RCON paths, a
 
 | Exposed tool | Implementation and checks | Game effect |
 |---|---|---|
-| `autoengineer_policy` | Fixed policy v2, max walk 5; no model-supplied policy | None |
+| `autoengineer_policy` | Fixed policy v3, max walk 5; no model-supplied policy | None |
 | `get_player_position` | Queued fixed Lua through PathfindingService; no arbitrary arguments | Read position |
 | `get_nearby_entities` | Queued fixed Lua; finite radius greater than zero, at most 8; no remote center | Read entities |
 | `scan_resources` | Queued fixed Lua; finite radius greater than zero, at most 50; no remote center | Read resource summary |
-| `walk_to_position` | Queued; finite coordinates, tolerance (0, .75], timeout (0, 20]; valid owning lease; distance [.5, 5] checked after the queue wait | Normal walking, path visualization |
+| `walk_to_position` | Queued; finite coordinates, tolerance (0, .75], timeout (0, 20]; valid owning lease; distance [.5, 5] checked after the queue wait; finite route, endpoint, total route length <=5 and start-drift validation before following | Normal walking, path visualization |
 | `autoengineer_arm` | Direct safety Lua; GUID owner, exactly one connected character; reject other active owner | Clear old walking/mining; install guarded tick handler and lease |
 | `autoengineer_renew` | Direct safety Lua; same owner, active and unexpired; cannot revive stopped lease | Renew 120 advancing-tick lease |
 | `autoengineer_status` | Direct read outside gameplay queue; same active owner and single character | Read position, walking, tick |
