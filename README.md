@@ -57,7 +57,7 @@ Suggestions, testing feedback, bug reports, and contributions are welcome. See [
 
 ## Project website
 
-The planned GitHub Pages site lives under `docs/` and can be enabled in repository Settings → Pages after publishing.
+The project website is published at [autoengineerfactorio.github.io/Factorio-AutoEngineer](https://autoengineerfactorio.github.io/Factorio-AutoEngineer/). Its source is `index.html` at the repository root. GitHub Pages deploys from the `main` branch, `/ (root)` folder.
 
 ## Licensing
 
