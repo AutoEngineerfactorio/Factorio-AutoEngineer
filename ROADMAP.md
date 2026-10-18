@@ -2,6 +2,10 @@
 
 This is a planning roadmap, not a promise of release dates.
 
+Complete and validate coverage of all areas of vanilla Factorio before starting
+modded compatibility work. Modded gameplay is the final phase. Space Age is an
+optional official expansion, validated separately after base-game coverage.
+
 ## Phase 0 — Tested proof of concept
 - [x] Local LLM responds via llama.cpp
 - [x] Connect Python MCP client to FactorioMCP
@@ -28,16 +32,32 @@ This is a planning roadmap, not a promise of release dates.
 - [ ] Verified mining and crafting operations
 - [ ] Resource-aware factory building and placement checks
 - [ ] Production, power, research, and recovery planning
+- [ ] Enemy detection, threat avoidance, and defensive building
+- [ ] Human-approved combat, equipment, ammunition, and recovery checks
+- [ ] Blueprint creation, saving, and a reusable blueprint library
+- [ ] Blueprint placement, material availability, and construction verification
+- [ ] Logistics, trains, signals, fluids, circuits, modules, and beacons
+- [ ] Pollution, enemy evolution, exploration, and expansion
+- [ ] Base-game progression through rocket launch and endgame production
 - [ ] Human/AI task handoff
 
 ## Phase 4 — In-game companion
 - [ ] Compact, expandable Factorio UI panel
 - [ ] In-game plan visualization and status
 - [ ] Manual pause/takeover and optional assistance
+- [ ] Blueprint selection and combat-assistance controls
 - [ ] Evaluate separate-player cooperative control feasibility
 
-## Phase 5 — Modded gameplay and autonomy
-- [ ] Runtime discovery of modded prototypes and recipes
-- [ ] Validate Space Age and selected overhaul mod compatibility
+## Phase 5 — Vanilla completion and optional autonomy
+- [ ] Audit and validate all vanilla systems, including multiplayer and remaining edge cases
+- [ ] Validate complete vanilla progression and recovery in the dedicated test save
 - [ ] Safe unattended execution with budgets, watchdogs, and recovery
+- [ ] Evaluate unattended combat only after supervised combat is validated
 - [ ] User-friendly packaging and onboarding
+- [ ] Complete the vanilla acceptance checklist before expanding compatibility
+
+## Phase 6 — Expansion and modded gameplay (last)
+- [ ] Validate optional official Space Age expansion separately
+- [ ] Runtime discovery of modded prototypes and recipes
+- [ ] Validate selected mod and overhaul compatibility
+- [ ] Revalidate movement, combat, blueprints, and safety for each supported expansion or mod
