@@ -64,9 +64,15 @@ class PolicyTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_backend_policy_must_match_session_mode(self):
         raw=NS(list_tools=AsyncMock(return_value=NS(tools=[NS(name=k) for k in ALLOWED])),
-            call_tool=AsyncMock(return_value=NS(is_error=False,content=[NS(type='text',text=json.dumps(dict(version=6,max_walk=5,restricted=True,mode='helper')))])))
+            call_tool=AsyncMock(return_value=NS(is_error=False,content=[NS(type='text',text=json.dumps(dict(version=7,max_walk=5,restricted=True,mode='helper')))])))
         await DispatchBoundary(raw).verify()
         with self.assertRaises(RuntimeError):await DispatchBoundary(raw,policy=ModePolicy(SEMI)).verify()
+
+
+    async def test_old_backend_is_rejected(self):
+        raw=NS(list_tools=AsyncMock(return_value=NS(tools=[NS(name=k) for k in ALLOWED])),
+            call_tool=AsyncMock(return_value=NS(is_error=False,content=[NS(type='text',text=json.dumps(dict(version=6,max_walk=5,restricted=True,mode='helper')))])))
+        with self.assertRaises(RuntimeError):await DispatchBoundary(raw).verify()
 
 
 class DashboardModeTests(unittest.TestCase):

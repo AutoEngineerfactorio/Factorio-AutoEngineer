@@ -1,0 +1,2 @@
+# Optional offline Lua tests; not an application dependency.
+lupa==2.8
