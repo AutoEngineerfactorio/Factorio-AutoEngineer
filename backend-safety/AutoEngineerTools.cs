@@ -1,22 +1,53 @@
 using FactorioMCP.Services;
+using FactorioMCP.Rcon;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 
 namespace FactorioMCP.Tools;
 
 [McpServerToolType]
-internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingService pathfinding, GameCommandQueue queue)
+internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingService pathfinding, GameCommandQueue queue, RconClient rcon)
 {
     internal static readonly Dictionary<string, string[]> Allowed = new()
     {
-        ["autoengineer_policy"] = [], ["get_player_position"] = [],
+        ["autoengineer_view"] = [], ["autoengineer_policy"] = [], ["get_player_position"] = [],
         ["scan_resources"] = ["radius"], ["get_nearby_entities"] = ["radius"],
         ["walk_to_position"] = ["targetX", "targetY", "safetyOwner", "tolerance", "timeoutSeconds"],
         ["autoengineer_status"] = ["owner"], ["autoengineer_arm"] = ["owner"], ["autoengineer_renew"] = ["owner"], ["autoengineer_stop"] = ["owner"]
     };
 
     [McpServerTool(Name = "autoengineer_policy"), Description("Report the restricted AutoEngineer dispatch policy.")]
-    public string Policy() => "{\"version\":3,\"max_walk\":5,\"restricted\":true}";
+    public string Policy() => "{\"version\":4,\"max_walk\":5,\"restricted\":true}";
+
+    [McpServerTool(Name = "autoengineer_view"), Description("Read bounded single-player position and main inventory; no game actions.")]
+    public Task<string> View(CancellationToken cancellationToken = default) =>
+        rcon.ExecuteLuaAsync("""
+            local p = game.connected_players[1]
+            if #game.connected_players ~= 1 or not p or not p.character then
+                rcon.print('{"status":"unavailable"}') return
+            end
+            local inv = p.get_main_inventory()
+            local items, lookup, truncated = {}, {}, false
+            if inv then
+                for i=1,math.min(#inv,2000) do
+                    local stack = inv[i]
+                    if stack.valid_for_read then
+                        local quality = stack.quality and stack.quality.name or "normal"
+                        local key = stack.name .. ":" .. quality
+                        local item = lookup[key]
+                        if item then item.count = item.count + stack.count
+                        elseif #items < 64 then
+                            item = {name=stack.name,quality=quality,count=stack.count}
+                            lookup[key] = item
+                            items[#items+1] = item
+                        else truncated = true end
+                    end
+                end
+                if #inv > 2000 then truncated = true end
+            end
+            rcon.print(helpers.table_to_json({status="ok",tick=game.tick,x=p.position.x,y=p.position.y,
+                surface=p.surface.name,inventory=items,inventory_available=inv~=nil,truncated=truncated}))
+            """, cancellationToken);
 
     [McpServerTool(Name = "get_player_position"), Description("Read the single connected player's position.")]
     public Task<string> Position(CancellationToken cancellationToken = default) =>
