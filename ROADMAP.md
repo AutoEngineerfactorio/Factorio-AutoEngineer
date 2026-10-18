@@ -20,7 +20,7 @@ This is a planning roadmap, not a promise of release dates.
 
 ## Phase 2 — Intelligent exploration
 - [x] Persistent visited-area and failed-target map
-- [ ] Objective-based navigation and path validation
+- [x] Objective-based navigation and path validation
 - [ ] Efficient discovery of nearby resources
 - [ ] Live 2D dashboard map and inventory display
 
