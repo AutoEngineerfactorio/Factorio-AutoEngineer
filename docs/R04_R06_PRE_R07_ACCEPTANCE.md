@@ -1,6 +1,6 @@
 # R04-R06 pre-R07 acceptance gate — 2026-10-18
 
-**Status: IN PROGRESS. R07 must remain on hold.** Offline green tests are not live gameplay acceptance.
+**Status: IN PROGRESS. R07 implementation remains on hold until a NARROW data/math/safety readiness checkpoint is verified.** This checkpoint admits only read-only Blueprint Studio work: versioned codec, private library, preview and offline build-feasibility checks (R07 plus read-only parts of R08). It does **not** authorize blueprint placement, live construction, Semi-Autonomous expansion or Full Autonomy. See [Helper-first roadmap and Gate H1](HELPER_FIRST_GATE_H1.md). Green offline tests do not establish live game acceptance.
 
 ## Implemented locally on main
 
@@ -30,8 +30,8 @@
 1. Build and test the local bounded read-only recipe/research adapter in the pinned backend source AND reproducible combined backend-safety.patch. It is integrated into the existing `autoengineer_view`; the exact 12-tool policy-v8 boundary is unchanged. Do not enable arbitrary Lua/RCON or expand gameplay permissions. Test build, compatibility, payload caps, paging, latency, disabled/hidden/unavailable recipes, exact force and surface, fog/private state and patch reconstruction.
 2. Source-level paging (1..32 entries per request, 10,000-entry fail-closed cap) and a stable change-detection fingerprint are implemented. Offline Python assembly requires matching tick, version, force, surface, research, enabled content, fingerprint, page counts and ordering; research/content equality is compared directly rather than inferred only from the non-authenticating fingerprint. Incomplete catalogs fail closed for planning. Tests cover mixed snapshots, malformed counts, timeouts and truncation. Same-tick feasibility, latency, version compatibility and fingerprint behavior remain unverified against the rebuilt backend and live runtime. The fingerprint is not an authentication mechanism.
 3. R06 needs **general multi-product deterministic flow balance**, alternatives, machines and throughput, verified returned catalysts/recycling, quality and stochastic yields, fluid and temperature handling, module/beacon effects, resource and power constraints. The offline recipe catalog now retains each recipe's runtime category but does not identify compatible machine prototypes or their observed availability. Current rate calculations remain bounded, mostly single-machine estimates.
-4. Qualify **Space Age, Quality and Elevated Rails individually** in isolated first-party game profiles; handle future 2.x versions separately. Third-party mod adaptation remains R20 last.
-5. Perform explicit user-approved **isolated live read-only game verification**, then supervised Semi operations and a measured 1/5/10-minute 300-gears/min physical factory run with negative cases (missing ore, insufficient power, bots/inserters, locked research, save restart, takeover and Stop). Do not alter saves or operate Factorio without authorization.
+4. Qualify **Space Age, Quality and Elevated Rails individually** in isolated first-party game profiles; handle future 2.x versions separately. Read-only mod signature/catalog discovery and isolated pY-shaped stress benchmarking are part of early Helper work when safely qualified; full third-party **gameplay automation** remains R20.
+5. Prove pre-R07 catalog source integrity, deterministic recipe/rate math on representative supported outputs, fail-closed stale/partial behavior and zero Helper game writes with explicit user-approved **isolated live read-only verification**. Before any R07 code, record a focused go/no-go result for that readiness subset; do not claim full R06 all-output acceptance from a gear fixture. The **later Gate H1**, after Blueprint Studio implementation, requires independently authorized legitimate physical-factory 1/5/10-minute rate and power evidence, negative scenarios (missing ore, insufficient power, bots/inserters, locked research, save restart, takeover, Stop), reliability, visual QA and signoff. Existing narrow supervised safety fixtures are separate; no gameplay mode expansion before H1.
 6. Revalidate legacy CLI denial in the packaged Windows launcher and installed policy-v8 backend before claiming all R01 legacy paths closed.
 
 ## Current acceptance status
@@ -44,6 +44,8 @@
 | R06 item-only simple preview | Test-backed bounded one-recipe estimator; unsupported cases explicitly partial | PARTIAL: inputs and power are caller-provided, not live-verified; general flow solver remains unfinished |
 | R06 300 gears/min physical factory | Source-backed fixture arithmetic | BLOCKED: no physical run |
 | Base game future 2.x/Space Age/Quality/Elevated Rails | Explicit fail-closed tests | NOT YET QUALIFIED |
-| R07 | Not started | WAIT |
+| Pre-R07 readiness | Catalog/data-truth + deterministic bounded math + Helper write-denial required | HOLD: require isolated live read-only qualification and written go/no-go |
+| R07 (Helper blueprint only) | Not started | WAIT until pre-R07 readiness; does not require finishing later H1 construction acceptance |
+| Gate H1 (Helper + Dashboard) | Includes R07 fidelity, physical measurement, visual/security/stress checks | NOT STARTED: no Semi expansion before independent signoff |
 
-All current work remains uncommitted on local main. No gameplay, save edits, GitHub publication, or model changes authorized by this document.
+This file is a planning and evidence register. Its source/patch tests do not themselves prove installation, Factorio gameplay, save updates, a public release, or Gate H1 acceptance. Publication of this document does not authorize live services, game actions, or model changes.

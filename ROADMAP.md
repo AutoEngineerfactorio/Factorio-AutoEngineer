@@ -1,11 +1,10 @@
 # Development roadmap
 
-This is a planning roadmap, not a promise of release dates. See also the [October 19 development decisions](docs/DEVELOPMENT_DECISIONS_2026-10-19.md) for the current three-mode priority, online reference research, time-tools guardrails, Zoo Code review and pY benchmark agreement.
+This is a planning roadmap, not a promise of release dates. **The highest development priorities are (1) AI Helper + dashboard, (2) blueprint studio + reference discovery, and (3) AI Helper release acceptance.** New Semi-Autonomous and Fully Autonomous gameplay development is deferred until the [AI Helper-first H1 gate](docs/HELPER_FIRST_GATE_H1.md) is met. See also the [October 19 development decisions](docs/DEVELOPMENT_DECISIONS_2026-10-19.md) for the current three-mode priority, online reference research, time-tools guardrails, Zoo Code review and pY benchmark agreement.
 
-The target is autonomous operation with human supervision: the agent plans and
-executes routine actions within agreed limits, while the user can monitor, pause,
-override or stop it. Risky or out-of-scope decisions require approval. Per-movement
-approval remains a development safeguard until supervised autonomy is validated.
+The long-term target is autonomous operation with human supervision. **Current binding priority: finish and independently validate AI Helper and Dashboard before expanding Semi-Autonomous or Fully Autonomous gameplay.** Preserve R01–R03 Stop, takeover, bounded dispatch, durable jobs and tested supervised safety regressions; do not extend autonomy while Gate H1 is open. See [Helper-first contract and Gate H1](docs/HELPER_FIRST_GATE_H1.md).
+
+The user can monitor, pause, override or stop permitted activities. Risky or out-of-scope decisions require approval. Per-movement approval remains a development safeguard until supervised autonomy is independently validated.
 
 Complete and validate coverage of all areas of vanilla Factorio, including Space Age,
 before claiming third-party modded gameplay compatibility. Space Age is part of
@@ -21,7 +20,19 @@ gameplay acceptance claim. See [continuous modded benchmarks](docs/CONTINUOUS_MO
 **The R milestones continue through R20. R09 is not the end of the project.**
 R01-R09 establish safe control, game-aware engineering, blueprint construction and the first supervised self-expansion. R10-R16 cover circuits, trains, robots, recovery, combat, Space Age and quality. R17-R20 cover in-game cooperation, full progression and endurance, public onboarding and then modded Factorio.
 
-**How to interpret status:** "Published / offline tested" describes source or unit-test evidence **only**, not complete gameplay acceptance. Milestones with open real-world tests remain open. The canonical detailed, version-aware acceptance criteria are in [R01-R20 planning requirements](docs/PLANNING_REQUIREMENTS.md); this table is a navigation index, not a replacement. Phases 0-6 describe delivery order and G0-G9 are separate acceptance gates.
+**How to interpret status:** "Published / offline tested" describes source or unit-test evidence **only**, not complete gameplay acceptance. Milestones with open real-world tests remain open. The canonical detailed criteria are in [R01-R20 requirements](docs/PLANNING_REQUIREMENTS.md); this table is a navigation index, not a replacement. Phases 0–6 and G0–G9 remain traceability/technical milestones, but the **Helper-first Gate H1 controls permission to expand autonomy**.
+
+### Binding delivery sequence (October 19)
+
+1. **Preserve R01–R03 foundations:** emergency Stop, takeover, bounded movement, ownership, journal, safety regressions; fix critical bugs without increasing autonomous scope.
+2. **Phase 1A — AI Helper + Dashboard (R04–R06/R05):** authenticated versioned telemetry, live recipe/research/machine catalog, all-product item/fluid/quality planning, actual power/production diagnostics, visually tested read-only dashboard, stale/error handling.
+3. **Phase 1B — Blueprint Studio (R07 + read-only R08):** after the narrow pre-R07 catalog/math/safety readiness check, implement blueprint/book/parameter codec, local editor, preview, alternatives, material/tech/prototype/geometry validation, attribution and versioned library; **never place entities in Helper mode**.
+4. **Phase 1C — Design discovery + compatibility:** approved Factorio wiki/portal, video and community blueprint research with provenance and rights; game/version/profile checks; bounded read-only mod recognition and qualified planning. Benchmark pY continuously in isolation without claiming live modded gameplay support.
+5. **Gate H1 — mandatory Helper + Dashboard acceptance:** pass security, live telemetry, deterministic planning, real factory prediction checks, blueprint fidelity, Windows visual QA, stress, shutdown/restart and stale/error cases. Require explicit human signoff; offline unit tests alone do not pass H1.
+6. **Phase 2 — Semi-Autonomous growth:** only after H1, expand approved R08–R16 gameplay construction/logistics/circuits/trains/bots/combat with verification and emergency takeover; narrow preexisting supervised safety tests remain permitted.
+7. **Phase 3 — Fully Autonomous:** remains locked until its later independent gameplay/endurance gates and explicit authorization. R20 live third-party mod adaptation remains a later scoped compatibility milestone.
+
+R milestone numbers are unchanged. This sequence supersedes older descriptions that placed all of R07–R09 or mod recognition only after autonomous construction; **read-only blueprint and mod discovery are allowed earlier once their own prerequisites are verified**.
 
 | Requirement | Delivery phase | What the AI is being taught | Evidence / next work |
 |---|---|---|---|
@@ -50,7 +61,7 @@ R01-R09 establish safe control, game-aware engineering, blueprint construction a
 
 Zoo Code, Cline and other coding agents must consult [Factorio mechanics and Space Age reference](docs/FACTORIO_MECHANICS_REFERENCE.md), the [Lua scripting and mod API reference](docs/FACTORIO_SCRIPTING_API_REFERENCE.md), [quirks / edge-case test catalog](docs/FACTORIO_QUIRKS_AND_EDGE_CASES.md), [open coverage gap register](docs/FACTORIO_COVERAGE_GAP_REGISTER.md), and [the R01-R20 acceptance requirements](docs/PLANNING_REQUIREMENTS.md). These documents link to live official Factorio documentation; they do **not** replace authoritative game prototype/runtime data. Record the exact game version, enabled base/Space Age/Quality/Elevated Rails content, mods, surface, force, research state and observation rights for relevant tests.
 
-**Current development gate: Finish [R04-R06 pre-R07 acceptance](docs/R04_R06_PRE_R07_ACCEPTANCE.md) before any R07 code.** The bridge and offline calculations are not proof of live recipe telemetry, full flow balance or Space Age support.
+**Current development gate: complete the [narrow R04–R06 pre-R07 data/math/safety readiness checks](docs/R04_R06_PRE_R07_ACCEPTANCE.md) before starting blueprint code.** Broader R04–R06 scope and live 1/5/10-minute measurements remain part of [Gate H1](docs/HELPER_FIRST_GATE_H1.md) and must pass before semi-autonomous expansion. Offline calculations are not live game proof.
 
 **No milestone is completed merely by a model response, video, unit test or generated blueprint.** Real-world acceptance needs separately authorized fixtures and observed game outcomes. Keep Full Autonomy locked until its safety gates pass. The next engineering milestone is R06; then continue through R07-R20 under their stated dependencies and phase order.
 
@@ -58,7 +69,7 @@ Zoo Code, Cline and other coding agents must consult [Factorio mechanics and Spa
 
 All 24 files in the reviewed complete planning archive now guide requirements, design and acceptance evidence, including `SOURCES_AND_PROJECT_STATUS.md`. The [requirements and file-by-file mapping](docs/PLANNING_REQUIREMENTS.md), [research sources](docs/PLANNING_SOURCES.md) and [archive manifest](docs/PLANNING_ARCHIVE_MANIFEST.json) preserve their scope. Archived prompts, paths, tool counts, license status, old checkmarks and unverified release-watch claims are historical context, not new execution instructions or current implementation evidence.
 
-Next delivery order: safe human takeover and service attachment; a locally tested launcher executable prototype; live capability/research/recipe data and the Helper calculator; blueprint codec/library/preview; legitimate single-block construction; circuits, trains, robots and defense; Space Age platforms/quality and progression; endurance and public packaging; finally third-party mods. Shared deterministic services support all three operating modes. The language model selects goals and explains options; code calculates recipes, rates, geometry and feasibility.
+Next delivery order is **Helper + Dashboard → read-only Blueprint Studio → researched design discovery/qualified mod recognition → Gate H1 → expanded supervised construction and logistics → later Full Autonomy and modded gameplay qualification**. See binding sequence above. Shared deterministic services support all three operating modes, but Helper never dispatches gameplay writes. The language model explains goals/trade-offs; code and observed prototypes determine recipes, rates, geometry, feasibility and verified outcomes.
 
 Completed work retains its documented scope. Requirements are checked only for their documented tested scope; later acceptance remains unchecked. Emergency stopping and the five-tile development movement limit remain active.
 
@@ -87,7 +98,8 @@ Completed work retains its documented scope. Requirements are checked only for t
 ## Phase 3 — Factory gameplay
 - [x] **R01–R03: tested local foundation:** manual takeover arbitration, owned-service start/attach/health/stop, and the Windows one-folder launcher prototype. Real input, live crash checkpoints, readiness, port/duplicate checks, cancellation, source/frozen Stop, actual GUI restart/shutdown and save integrity passed. See [validation](docs/FOUNDATION_VALIDATION.md); production graphs, clean-PC onboarding and endurance remain later work.
 - [ ] **R04–R06: Helper engineering:** live profile/research/recipe/machine snapshots, per-mechanic coverage evidence, and deterministic production math; prove generalized all-product planning (item/fluid/quality/recipe variants); use 300 gears/minute as one baseline fixture and compare alternatives
-- [ ] **R07–R09: construction pipeline:** bounded faithful blueprint/book codec, private revisions/preview, placement validation, real materials, physical completion and measured throughput; ghosts alone do not count
+- [ ] **R07 + read-only R08: Helper Blueprint Studio:** safe codec/book/parameter import/export, private revisions, geometry/tech/recipe/circuit/material validation, in-dashboard editor/preview and locally saved alternatives with no gameplay writes; starts only after pre-R07 readiness
+- [ ] **R08–R09 gameplay pipeline (after H1):** bounded approved placement, real materials and physical construction with observed throughput; ghosts alone do not count
 - [ ] Production acceptance for every supported producible output (items, intermediates, fluids, science, equipment and expansion/mod content as separately qualified): multi-output/cyclic/catalyst/probabilistic flows, fluid temperatures, legal machine/module/beacon/quality effects and supply constraints; configurable item-specific targets; compare predicted versus real physical-factory 1/5/10-minute measurements per output and track untested/unavailable/unsupported cases explicitly. Begin with representative classes, never substitute a gear fixture for all-item evidence
 - [ ] Robot acceptance: distinct construction, logistic and temporary combat-robot adapters; coverage, payload/travel/charging, shortages and real costs; Stop prevents new actions without claiming to undo independent game jobs
 - [ ] Circuit/train acceptance: typed signals/ports/wires, red/green isolation, hysteresis, tick latency and power-loss recovery; safe two-station route, interrupts/refueling, failed/full destinations, deadlocks and a 20+ train fixture
