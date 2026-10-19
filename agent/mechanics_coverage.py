@@ -106,9 +106,9 @@ def compute_mechanic_status(
     
     Status precedence (highest to lowest):
     1. action_justified_na -> "action-justified-na"
-    2. action_permitted=True -> "action-permitted"
-    3. result_verified with success=True -> "verified"
-    4. regression_evidence with passed=True -> "regression-passed"
+    2. result_verified with success=True -> "verified"
+    3. regression_evidence with passed=True -> "regression-passed"
+    4. action_permitted=True -> "action-permitted"
     5. observed -> "observed"
     6. planned -> "planned"
     7. Default -> "unobserved" (no evidence exists)
@@ -134,16 +134,15 @@ def compute_mechanic_status(
     if action_justified_na is not None and action_justified_na.strip():
         return "action-justified-na"
     
+    # Actual verification and passed regression rank above mere permission.
+    if isinstance(result_verified, dict) and result_verified.get("success") is True:
+        return "verified"
+
+    if isinstance(regression_evidence, dict) and regression_evidence.get("passed") is True:
+        return "regression-passed"
+
     if action_permitted is True:
         return "action-permitted"
-    
-    # Verify result_verified has success=True (not just existence)
-    if result_verified is not None and result_verified.get("success") is True:
-        return "verified"
-    
-    # Verify regression_evidence has passed=True (not just existence)
-    if regression_evidence is not None and regression_evidence.get("passed") is True:
-        return "regression-passed"
     
     if observed is not None:
         return "observed"
@@ -276,12 +275,31 @@ def compute_ledger_summary(ledger: dict[str, Any]) -> dict[str, Any]:
         or e.get("regression_evidence") is not None
     )
     
-    # Calculate categories with successful verification (success=True)
+    # Independent dimensions: permission does not erase evidence or failed tests.
     categories_with_successful_verification = sum(
-        1 for e in mechanics
-        if e.get("result_verified") is not None and e.get("result_verified", {}).get("success") is True
+        isinstance(e.get("result_verified"), dict)
+        and e["result_verified"].get("success") is True for e in mechanics
     )
-    
+    categories_with_passed_regression = sum(
+        isinstance(e.get("regression_evidence"), dict)
+        and e["regression_evidence"].get("passed") is True for e in mechanics
+    )
+    dimension_counts = {
+        "observed": sum(e.get("observed") is not None for e in mechanics),
+        "planned": sum(e.get("planned") is not None for e in mechanics),
+        "action_permitted": sum(e.get("action_permitted") is True for e in mechanics),
+        "verified": categories_with_successful_verification,
+        "regression_passed": categories_with_passed_regression,
+        "verification_failed": sum(
+            isinstance(e.get("result_verified"), dict)
+            and e["result_verified"].get("success") is False for e in mechanics
+        ),
+        "regression_failed": sum(
+            isinstance(e.get("regression_evidence"), dict)
+            and e["regression_evidence"].get("passed") is False for e in mechanics
+        ),
+    }
+
     return {
         "profile_version": ledger.get("profile_version"),
         "total_categories": len(mechanics),
@@ -289,6 +307,8 @@ def compute_ledger_summary(ledger: dict[str, Any]) -> dict[str, Any]:
         "evidence_based_coverage_percentage": round(categories_with_evidence / len(MECHANIC_CATEGORIES) * 100, 1),
         "categories_with_successful_verification": categories_with_successful_verification,
         "successful_verification_percentage": round(categories_with_successful_verification / len(MECHANIC_CATEGORIES) * 100, 1),
+        "categories_with_passed_regression": categories_with_passed_regression,
+        "dimension_counts": dimension_counts,
         "status_counts": status_counts,
     }
 

@@ -732,3 +732,31 @@ class TestModeEnum(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestIndependentEvidenceSummary(unittest.TestCase):
+    def test_verified_permission_and_regression_all_count(self):
+        entry = create_mechanic_entry(
+            "character-reach", "factorio-2.x", observed={"x": 1},
+            action_permitted=True, result_verified={"success": True},
+            regression_evidence={"passed": True})
+        status = compute_mechanic_status(
+            entry["observed"], None, True, None,
+            entry["result_verified"], entry["regression_evidence"])
+        self.assertEqual(status, "verified")
+        summary = compute_ledger_summary(
+            create_mechanics_ledger("factorio-2.x", mechanics=[entry]))
+        self.assertEqual(summary["status_counts"]["verified"], 1)
+        self.assertEqual(summary["dimension_counts"]["action_permitted"], 1)
+        self.assertEqual(summary["dimension_counts"]["verified"], 1)
+        self.assertEqual(summary["categories_with_passed_regression"], 1)
+
+    def test_failed_evidence_remains_failed(self):
+        entry = create_mechanic_entry(
+            "character-reach", "factorio-2.x", action_permitted=True,
+            result_verified={"success": False}, regression_evidence={"passed": False})
+        summary = compute_ledger_summary(
+            create_mechanics_ledger("factorio-2.x", mechanics=[entry]))
+        self.assertEqual(summary["dimension_counts"]["verified"], 0)
+        self.assertEqual(summary["dimension_counts"]["regression_passed"], 0)
+        self.assertEqual(summary["dimension_counts"]["verification_failed"], 1)
+        self.assertEqual(summary["dimension_counts"]["regression_failed"], 1)

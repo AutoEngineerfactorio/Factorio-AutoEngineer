@@ -458,3 +458,21 @@ class TestR04AcceptanceCriteria(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestFiniteSnapshotInputs(unittest.TestCase):
+    def test_nonfinite_observation_rejected(self):
+        for bad in (float("nan"), float("inf"), -float("inf")):
+            snapshot = {"schema": 1, "observed_at": bad, "game_version": "2.0.77",
+                        "force": "player", "surface": "nauvis", "research": []}
+            with self.subTest(value=str(bad)), self.assertRaises(ValueError):
+                assess_capability_snapshot(snapshot, now=100)
+
+    def test_invalid_clock_or_max_age_rejected(self):
+        snapshot = {"schema": 1, "observed_at": 100, "game_version": "2.0.77",
+                    "force": "player", "surface": "nauvis", "research": []}
+        for bad in (float("nan"), float("inf"), -float("inf"), True):
+            with self.subTest(now=str(bad)), self.assertRaises(ValueError):
+                assess_capability_snapshot(snapshot, now=bad)
+        for bad in (float("nan"), float("inf"), -float("inf"), -1):
+            with self.subTest(max_age=str(bad)), self.assertRaises(ValueError):
+                assess_capability_snapshot(snapshot, now=101, max_age=bad)

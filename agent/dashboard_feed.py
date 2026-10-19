@@ -65,6 +65,14 @@ def snapshot(raw):
             k: c[k]
             for k in ("input_adapter", "character_control", "lease_active", "walking", "generation")
         }
+    # Optional same-tick, bounded capability metadata from a future audited
+    # backend. Old policy-8 backends do not send it and remain observation-only.
+    if "capabilities" in raw:
+        from read_only_planning import validate_capabilities
+
+        data["capabilities"] = validate_capabilities(
+            raw["capabilities"], data["surface"], data["tick"]
+        )
     data.update(display_details(raw))
     return data
 

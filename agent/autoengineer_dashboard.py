@@ -23,6 +23,7 @@ from dashboard_view import LiveView
 from factorio_theme import AMBER, INSET, TEXT, apply_theme
 from mode_policy import FULL, HELPER, LABELS, SEMI
 from navigation_objective import Objective
+from read_only_planning import ReadOnlyPlanningSession
 from session_safety import PROMPT
 from verified_operations import validate_operation
 
@@ -59,6 +60,10 @@ class Dashboard:
         self.position = tk.StringVar(value="Unknown")
         self.cycle = tk.StringVar(value="-")
         self.verification = tk.StringVar(value="-")
+        self.planner_note = tk.StringVar(
+            value="R04-R06 planning: waiting for live observation (no inferred recipes)"
+        )
+        self.planning_session = ReadOnlyPlanningSession()
         self.build_ui()
         self.sync_mode_controls()
         self.root.after(80, self.process_events)
@@ -86,6 +91,11 @@ class Dashboard:
         self.mode_selector.bind("<<ComboboxSelected>>", self.change_mode)
         ttk.Label(modes, textvariable=self.mode_note, style="Muted.TLabel", wraplength=700).pack(
             side="left"
+        )
+        planner_strip = ttk.Frame(self.root, padding=(20, 0, 20, 8))
+        planner_strip.pack(fill="x")
+        ttk.Label(planner_strip, textvariable=self.planner_note, style="Muted.TLabel").pack(
+            anchor="w"
         )
         stats = ttk.Frame(self.root, padding=(20, 0, 20, 10))
         stats.pack(fill="x")
@@ -307,8 +317,14 @@ class Dashboard:
                     self.display_markers = {}
                 frame.update(getattr(self, "display_markers", {}))
                 self.position.set(f"{frame['position']['x']:.2f}, {frame['position']['y']:.2f}")
+            intelligence = self.planning_session.observe(frame)
+            if intelligence["planner_ready"]:
+                self.planner_note.set("R04-R06: read-only catalog received; calculations are estimates")
+            else:
+                self.planner_note.set("R04-R06: " + intelligence["reason"])
             self.live_view.update_frame(frame)
         except (ValueError, TypeError, KeyError, AttributeError):
+            self.planner_note.set("R04-R06: observation unavailable; planning disabled")
             self.live_view.update_frame({"status": "unavailable"})
 
     def start_observer(self):

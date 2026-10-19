@@ -42,6 +42,13 @@ async def safe_call(session, name, arguments):
 
 
 async def main(execute):
+    # Legacy proof-of-concept has no owner-scoped approval or lease path.
+    # Fail before even opening MCP; approved movement belongs to supervised_agent.
+    if execute:
+        raise PermissionError(
+            "Legacy --execute disabled: use supervised_agent under the restricted "
+            "Semi-Autonomous approval/lease policy"
+        )
     params = mcp_parameters()
 
     async with stdio_client(params) as (read, write):

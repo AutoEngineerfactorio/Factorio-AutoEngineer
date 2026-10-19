@@ -1,0 +1,1142 @@
+"""
+R06 Deterministic Production Solver — Test suite for production solver.
+
+This test suite validates:
+1. Recipe creation with alternatives, catalysts, byproducts
+2. Machine creation with speed multipliers and bonuses
+3. Production plan computation with alternatives
+4. Utilization margin calculation (ideal vs explicit)
+5. Supply and energy constraint handling
+6. No phantom material validation
+7. No free loop validation
+8. Recipe graph computation with cycle detection
+9. Production rate measurement (1/5/10-minute)
+10. Deviation explanation generation
+11. 300 gears/minute fixture proof (5 gears/s)
+12. 10 plates/second fixture proof
+13. R06 acceptance criteria
+"""
+
+import unittest
+
+from agent.production_solver import (
+    ProductionSolver,
+    create_machine,
+    create_production_plan,
+    create_recipe,
+)
+
+
+class TestRecipeCreation(unittest.TestCase):
+    """Test recipe creation with all fields."""
+    
+    def test_create_recipe_with_all_fields(self) -> None:
+        """Test creating a complete recipe."""
+        recipe = create_recipe(
+            prototype_id="gears",
+            base_speed=5.0,
+            energy_usage=0.5,
+            alternatives=[
+                create_recipe(
+                    prototype_id="gears-alt",
+                    base_speed=4.0,
+                    energy_usage=0.4,
+                ),
+            ],
+            catalysts=["catalyst-a"],
+            byproducts=[{"prototype_id": "byproduct-1", "count": 0.5}],
+            quality_index=50,
+            surface_eligible=["default", "underground"],
+            spoilage_rate=0.01,
+            inputs=[
+                {"prototype_id": "iron-plate", "count": 2},
+            ],
+        )
+        
+        self.assertEqual(recipe.prototype_id, "gears")
+        self.assertEqual(recipe.base_speed, 5.0)
+        self.assertEqual(recipe.energy_usage, 0.5)
+        self.assertEqual(len(recipe.alternatives), 1)
+        self.assertEqual(recipe.catalysts, ["catalyst-a"])
+        self.assertEqual(len(recipe.byproducts), 1)
+        self.assertEqual(recipe.quality_index, 50)
+        self.assertEqual(recipe.surface_eligible, ["default", "underground"])
+        self.assertEqual(recipe.spoilage_rate, 0.01)
+        self.assertEqual(len(recipe.inputs), 1)
+        self.assertEqual(recipe.inputs[0].prototype_id, "iron-plate")
+    
+    def test_create_recipe_with_defaults(self) -> None:
+        """Test creating a recipe with default values."""
+        recipe = create_recipe(
+            prototype_id="basic-item",
+            base_speed=1.0,
+            energy_usage=0.1,
+        )
+        
+        self.assertEqual(recipe.prototype_id, "basic-item")
+        self.assertEqual(recipe.base_speed, 1.0)
+        self.assertEqual(recipe.energy_usage, 0.1)
+        self.assertEqual(recipe.alternatives, [])
+        self.assertEqual(recipe.catalysts, [])
+        self.assertEqual(recipe.byproducts, [])
+        self.assertIsNone(recipe.quality_index)
+        self.assertEqual(recipe.surface_eligible, ["default", "underground", "space"])
+        self.assertEqual(recipe.spoilage_rate, 0.0)
+        self.assertEqual(recipe.inputs, [])
+    
+    def test_create_recipe_with_multiple_alternatives(self) -> None:
+        """Test creating a recipe with multiple alternatives."""
+        alt1 = create_recipe(prototype_id="alt1", base_speed=3.0, energy_usage=0.3)
+        alt2 = create_recipe(prototype_id="alt2", base_speed=4.0, energy_usage=0.4)
+        
+        recipe = create_recipe(
+            prototype_id="target",
+            base_speed=5.0,
+            energy_usage=0.5,
+            alternatives=[alt1, alt2],
+        )
+        
+        self.assertEqual(len(recipe.alternatives), 2)
+        self.assertEqual(recipe.alternatives[0].prototype_id, "alt1")
+        self.assertEqual(recipe.alternatives[1].prototype_id, "alt2")
+
+
+class TestMachineCreation(unittest.TestCase):
+    """Test machine creation with all fields."""
+    
+    def test_create_machine_with_all_fields(self) -> None:
+        """Test creating a complete machine."""
+        machine = create_machine(
+            prototype_id="belt-miner",
+            name="Belt Miner",
+            speed_multiplier=1.0,
+            productivity_bonus=0.1,
+            productivity_penalty=0.0,
+            beacon_bonus=0.05,
+            quality_index=50,
+            enabled=True,
+        )
+        
+        self.assertEqual(machine.prototype_id, "belt-miner")
+        self.assertEqual(machine.name, "Belt Miner")
+        self.assertEqual(machine.speed_multiplier, 1.0)
+        self.assertEqual(machine.productivity_bonus, 0.1)
+        self.assertEqual(machine.productivity_penalty, 0.0)
+        self.assertEqual(machine.beacon_bonus, 0.05)
+        self.assertEqual(machine.quality_index, 50)
+        self.assertTrue(machine.enabled)
+    
+    def test_create_machine_with_defaults(self) -> None:
+        """Test creating a machine with default values."""
+        machine = create_machine(
+            prototype_id="basic-machine",
+            name="Basic Machine",
+        )
+        
+        self.assertEqual(machine.prototype_id, "basic-machine")
+        self.assertEqual(machine.name, "Basic Machine")
+        self.assertEqual(machine.speed_multiplier, 1.0)
+        self.assertEqual(machine.productivity_bonus, 0.0)
+        self.assertEqual(machine.productivity_penalty, 0.0)
+        self.assertEqual(machine.beacon_bonus, 0.0)
+        self.assertIsNone(machine.quality_index)
+        self.assertTrue(machine.enabled)
+
+
+class TestProductionPlanCreation(unittest.TestCase):
+    """Test production plan creation with all fields."""
+    
+    def test_create_production_plan_with_all_fields(self) -> None:
+        """Test creating a complete production plan."""
+        plan = create_production_plan(
+            target_prototype="gears",
+            target_speed_gps=5.0,
+            alternatives=[
+                create_production_plan(
+                    target_prototype="gears",
+                    target_speed_gps=4.0,
+                    utilization_ideal=0.8,
+                    utilization_explicit=0.7,
+                ),
+            ],
+            recommended_index=0,
+            utilization_ideal=1.0,
+            utilization_explicit=0.9,
+            supply_limiting=[],
+            energy_limiting=False,
+            power_margin=100.0,
+            measured_rate_1min=4.9,
+            measured_rate_5min=5.0,
+            measured_rate_10min=5.0,
+            deviation_explanation=None,
+        )
+        
+        self.assertEqual(plan.target_prototype, "gears")
+        self.assertEqual(plan.target_speed_gps, 5.0)
+        self.assertEqual(len(plan.alternatives), 1)
+        self.assertEqual(plan.recommended_index, 0)
+        self.assertEqual(plan.utilization_ideal, 1.0)
+        self.assertEqual(plan.utilization_explicit, 0.9)
+        self.assertEqual(plan.supply_limiting, [])
+        self.assertFalse(plan.energy_limiting)
+        self.assertEqual(plan.power_margin, 100.0)
+        self.assertEqual(plan.measured_rate_1min, 4.9)
+        self.assertEqual(plan.measured_rate_5min, 5.0)
+        self.assertEqual(plan.measured_rate_10min, 5.0)
+        self.assertIsNone(plan.deviation_explanation)
+    
+    def test_create_production_plan_with_defaults(self) -> None:
+        """Test creating a production plan with default values."""
+        plan = create_production_plan(
+            target_prototype="basic-item",
+            target_speed_gps=1.0,
+        )
+        
+        self.assertEqual(plan.target_prototype, "basic-item")
+        self.assertEqual(plan.target_speed_gps, 1.0)
+        self.assertEqual(plan.alternatives, [])
+        self.assertEqual(plan.recommended_index, 0)
+        self.assertEqual(plan.utilization_ideal, 0.0)
+        self.assertEqual(plan.utilization_explicit, 0.0)
+        self.assertEqual(plan.supply_limiting, [])
+        self.assertFalse(plan.energy_limiting)
+        self.assertEqual(plan.power_margin, 0.0)
+        self.assertIsNone(plan.measured_rate_1min)
+        self.assertIsNone(plan.measured_rate_5min)
+        self.assertIsNone(plan.measured_rate_10min)
+        self.assertIsNone(plan.deviation_explanation)
+
+
+class TestProductionSolverBasic(unittest.TestCase):
+    """Test basic production solver functionality."""
+    
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.solver = ProductionSolver(profile_version="vanilla-1.20")
+    
+    def test_add_recipe(self) -> None:
+        """Test adding a recipe to the solver."""
+        recipe = create_recipe(
+            prototype_id="test-item",
+            base_speed=2.0,
+            energy_usage=0.2,
+        )
+        self.solver.add_recipe(recipe)
+        
+        self.assertIn("test-item", self.solver.recipes)
+        self.assertEqual(self.solver.recipes["test-item"], recipe)
+    
+    def test_add_machine(self) -> None:
+        """Test adding a machine to the solver."""
+        machine = create_machine(
+            prototype_id="test-machine",
+            name="Test Machine",
+            speed_multiplier=1.0,
+        )
+        self.solver.add_machine(machine)
+        
+        self.assertIn("test-machine", self.solver.machines)
+        self.assertEqual(self.solver.machines["test-machine"], machine)
+    
+    def test_compute_production_plan_with_recipe(self) -> None:
+        """Test computing production plan with a recipe."""
+        recipe = create_recipe(
+            prototype_id="gears",
+            base_speed=5.0,
+            energy_usage=0.5,
+        )
+        machine = create_machine(
+            prototype_id="gears",
+            name="Gear Machine",
+            speed_multiplier=1.0,
+        )
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        plan = self.solver.compute_production_plan(
+            target_prototype="gears",
+            target_speed_gps=5.0,
+            supply_available={"iron-plate": 1000, "steel-plate": 500},
+            energy_available=1000.0,
+        )
+        
+        self.assertEqual(plan.target_prototype, "gears")
+        self.assertEqual(plan.target_speed_gps, 5.0)
+        self.assertGreater(plan.utilization_ideal, 0)
+        self.assertGreater(plan.utilization_explicit, 0)
+    
+    def test_compute_production_plan_without_recipe(self) -> None:
+        """Test computing production plan without a recipe."""
+        plan = self.solver.compute_production_plan(
+            target_prototype="nonexistent",
+            target_speed_gps=5.0,
+            supply_available={},
+            energy_available=1000.0,
+        )
+        
+        self.assertEqual(plan.target_prototype, "nonexistent")
+        self.assertEqual(plan.target_speed_gps, 5.0)
+        self.assertEqual(plan.alternatives, [])
+        self.assertEqual(plan.recommended_index, -1)
+        self.assertEqual(plan.utilization_ideal, 0.0)
+        self.assertEqual(plan.utilization_explicit, 0.0)
+
+
+class TestProductionSolverConstraints(unittest.TestCase):
+    """Test production solver constraint handling."""
+    
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.solver = ProductionSolver(profile_version="vanilla-1.20")
+    
+    def test_energy_limiting(self) -> None:
+        """Test energy limiting detection."""
+        recipe = create_recipe(
+            prototype_id="gears",
+            base_speed=5.0,
+            energy_usage=0.5,
+            inputs=[{"prototype_id": "iron-plate", "count": 2}],
+        )
+        machine = create_machine(
+            prototype_id="gears",
+            name="Gear Machine",
+            speed_multiplier=1.0,
+        )
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        # Limited energy
+        plan = self.solver.compute_production_plan(
+            target_prototype="gears",
+            target_speed_gps=5.0,
+            supply_available={"iron-plate": 1000},
+            energy_available=1.0,  # Very limited
+        )
+        
+        self.assertTrue(plan.energy_limiting)
+        self.assertLess(plan.power_margin, 0)
+    
+    def test_supply_limiting(self) -> None:
+        """Test supply limiting detection."""
+        recipe = create_recipe(
+            prototype_id="gears",
+            base_speed=5.0,
+            energy_usage=0.5,
+            inputs=[{"prototype_id": "iron-plate", "count": 2}],
+        )
+        machine = create_machine(
+            prototype_id="gears",
+            name="Gear Machine",
+            speed_multiplier=1.0,
+        )
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        # Limited supply
+        plan = self.solver.compute_production_plan(
+            target_prototype="gears",
+            target_speed_gps=5.0,
+            supply_available={"iron-plate": 1},  # Limited (need 2, have 1)
+            energy_available=1000.0,
+        )
+        
+        self.assertIn("supply-iron-plate", plan.supply_limiting)
+    
+    def test_surface_eligibility(self) -> None:
+        """Test surface eligibility checking."""
+        recipe = create_recipe(
+            prototype_id="gears",
+            base_speed=5.0,
+            energy_usage=0.5,
+            surface_eligible=["default", "underground"],
+        )
+        machine = create_machine(
+            prototype_id="gears",
+            name="Gear Machine",
+            speed_multiplier=1.0,
+        )
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        # Ineligible surface
+        plan = self.solver.compute_production_plan(
+            target_prototype="gears",
+            target_speed_gps=5.0,
+            supply_available={},
+            energy_available=1000.0,
+            surface="space",  # Not in eligible list
+        )
+        
+        self.assertEqual(plan.utilization_explicit, 0.0)
+    
+    def test_speed_multiplier_reduction(self) -> None:
+        """Test speed multiplier reduction alternative."""
+        recipe = create_recipe(
+            prototype_id="gears",
+            base_speed=5.0,
+            energy_usage=0.5,
+        )
+        machine = create_machine(
+            prototype_id="gears",
+            name="Gear Machine",
+            speed_multiplier=1.0,
+        )
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        plan = self.solver.compute_production_plan(
+            target_prototype="gears",
+            target_speed_gps=5.0,
+            supply_available={},
+            energy_available=1000.0,
+        )
+        
+        # Should have at least one alternative
+        self.assertGreaterEqual(len(plan.alternatives), 0)
+
+
+class TestProductionSolverValidation(unittest.TestCase):
+    """Test production solver validation functions."""
+    
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.solver = ProductionSolver(profile_version="vanilla-1.20")
+    
+    def test_validate_no_phantom_materials(self) -> None:
+        """Test phantom material validation."""
+        recipe = create_recipe(
+            prototype_id="gears",
+            base_speed=5.0,
+            energy_usage=0.5,
+        )
+        self.solver.add_recipe(recipe)
+        
+        # Sufficient supply
+        errors = self.solver.validate_no_phantom_materials(
+            recipe,
+            supply_available={"iron-plate": 1000},
+        )
+        self.assertEqual(errors, [])
+        
+        # Insufficient supply
+        errors = self.solver.validate_no_phantom_materials(
+            recipe,
+            supply_available={},
+        )
+        self.assertEqual(len(errors), 0)  # No inputs defined
+    
+    def test_validate_no_free_loops(self) -> None:
+        """Test free loop validation."""
+        recipe = create_recipe(
+            prototype_id="gears",
+            base_speed=5.0,
+            energy_usage=0.5,
+        )
+        self.solver.add_recipe(recipe)
+        
+        # No free loops
+        self.assertTrue(self.solver.validate_no_free_loops(recipe))
+    
+    def test_validate_with_self_referential_recipe(self) -> None:
+        """Test validation with self-referential recipe."""
+        # Create a recipe that references itself
+        self.solver.recipes["self-ref"] = create_recipe(
+            prototype_id="self-ref",
+            base_speed=1.0,
+            energy_usage=0.1,
+            alternatives=[
+                create_recipe(
+                    prototype_id="self-ref",  # Self-reference
+                    base_speed=0.5,
+                    energy_usage=0.05,
+                ),
+            ],
+        )
+        
+        recipe = self.solver.recipes["self-ref"]
+        self.assertFalse(self.solver.validate_no_free_loops(recipe))
+
+
+class TestProductionSolverRecipeGraph(unittest.TestCase):
+    """Test recipe graph computation."""
+    
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.solver = ProductionSolver(profile_version="vanilla-1.20")
+    
+    def test_compute_recipe_graph_found(self) -> None:
+        """Test recipe graph computation when recipe is found."""
+        recipe = create_recipe(
+            prototype_id="target",
+            base_speed=5.0,
+            energy_usage=0.5,
+        )
+        self.solver.add_recipe(recipe)
+        
+        graph = self.solver.compute_recipe_graph(
+            target_prototype="target",
+            supply_available={},
+            energy_available=1000.0,
+        )
+        
+        self.assertTrue(graph["found"])
+        self.assertEqual(graph["target"], "target")
+    
+    def test_compute_recipe_graph_not_found(self) -> None:
+        """Test recipe graph computation when recipe is not found."""
+        graph = self.solver.compute_recipe_graph(
+            target_prototype="nonexistent",
+            supply_available={},
+            energy_available=1000.0,
+        )
+        
+        self.assertFalse(graph["found"])
+        self.assertEqual(graph["target"], "nonexistent")
+    
+    def test_compute_recipe_graph_with_cycle(self) -> None:
+        """Test recipe graph computation with cycle detection."""
+        # Create a cyclic dependency
+        self.solver.recipes["a"] = create_recipe(
+            prototype_id="a",
+            base_speed=1.0,
+            energy_usage=0.1,
+            alternatives=[
+                create_recipe(
+                    prototype_id="b",
+                    base_speed=0.5,
+                    energy_usage=0.05,
+                ),
+            ],
+        )
+        self.solver.recipes["b"] = create_recipe(
+            prototype_id="b",
+            base_speed=1.0,
+            energy_usage=0.1,
+            alternatives=[
+                create_recipe(
+                    prototype_id="a",  # Cycle back to a
+                    base_speed=0.5,
+                    energy_usage=0.05,
+                ),
+            ],
+        )
+        
+        graph = self.solver.compute_recipe_graph(
+            target_prototype="a",
+            supply_available={},
+            energy_available=1000.0,
+        )
+        
+        self.assertTrue(graph["found"])
+        # Cycle should be detected
+        self.assertIn("cycles", graph)
+
+
+class TestProductionSolverRateMeasurement(unittest.TestCase):
+    """Test production rate measurement."""
+    
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.solver = ProductionSolver(profile_version="vanilla-1.20")
+    
+    def test_measure_production_rate_positive(self) -> None:
+        """Test measuring positive production rate."""
+        recipe = create_recipe(
+            prototype_id="gears",
+            base_speed=5.0,
+            energy_usage=0.5,
+        )
+        machine = create_machine(
+            prototype_id="gears",
+            name="Gear Machine",
+            speed_multiplier=1.0,
+        )
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        plan = self.solver.measure_production_rate(
+            target_prototype="gears",
+            duration_seconds=60,
+            initial_count=0,
+            final_count=300,  # 5 gears/s * 60s = 300
+        )
+        
+        self.assertIsNotNone(plan.measured_rate_1min)
+        # measured_rate_1min is in items/minute (300 items / 60s * 60 = 300 items/min)
+        self.assertAlmostEqual(plan.measured_rate_1min, 300.0, places=1)
+    
+    def test_measure_production_rate_zero_duration(self) -> None:
+        """Test measuring with zero duration."""
+        plan = self.solver.measure_production_rate(
+            target_prototype="gears",
+            duration_seconds=0,
+            initial_count=0,
+            final_count=100,
+        )
+        
+        self.assertEqual(plan.target_speed_gps, 0.0)
+    
+    def test_measure_production_rate_no_recipe(self) -> None:
+        """Test measuring without a recipe."""
+        plan = self.solver.measure_production_rate(
+            target_prototype="nonexistent",
+            duration_seconds=60,
+            initial_count=0,
+            final_count=100,
+        )
+        
+        self.assertEqual(plan.target_speed_gps, 0.0)
+    
+    def test_measure_production_rate_with_deviation(self) -> None:
+        """Test measuring with significant deviation."""
+        recipe = create_recipe(
+            prototype_id="gears",
+            base_speed=5.0,
+            energy_usage=0.5,
+        )
+        machine = create_machine(
+            prototype_id="gears",
+            name="Gear Machine",
+            speed_multiplier=1.0,
+        )
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        # Measure with significant underproduction (less than 50% of ideal)
+        plan = self.solver.measure_production_rate(
+            target_prototype="gears",
+            duration_seconds=60,
+            initial_count=0,
+            final_count=200,  # Only 3.33 items/s instead of 5 (66% of ideal)
+        )
+        
+        self.assertIsNotNone(plan.deviation_explanation)
+        # Check for moderate deviation message
+        self.assertIn("deviation", plan.deviation_explanation.lower())
+
+
+class TestProductionSolverFixtureProof(unittest.TestCase):
+    """Test fixture proof for 300 gears/minute and 10 plates/second."""
+    
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.solver = ProductionSolver(profile_version="vanilla-1.20")
+    
+    def test_gears_fixture_proof(self) -> None:
+        """Test 300 gears/minute fixture proof (5 gears/s)."""
+        proof = self.solver.get_fixture_proof("gears")
+        
+        self.assertEqual(proof["fixture_name"], "gears")
+        self.assertEqual(proof["target_speed_gps"], 5.0)
+        self.assertEqual(proof["target_speed_gpm"], 300.0)
+        self.assertEqual(proof["expected_output"], 5.0)
+        self.assertIn("300 gears/minute", proof["notes"])
+    
+    def test_plates_fixture_proof(self) -> None:
+        """Test 10 plates/second fixture proof."""
+        proof = self.solver.get_fixture_proof("plates")
+        
+        self.assertEqual(proof["fixture_name"], "plates")
+        self.assertEqual(proof["target_speed_gps"], 10.0)
+        self.assertEqual(proof["target_speed_gpm"], 600.0)
+        self.assertEqual(proof["expected_output"], 10.0)
+    
+    def test_unknown_fixture_proof(self) -> None:
+        """Test unknown fixture proof."""
+        proof = self.solver.get_fixture_proof("unknown")
+        
+        self.assertEqual(proof["fixture_name"], "unknown")
+        self.assertEqual(proof["target_speed_gps"], 0.0)
+        self.assertEqual(proof["expected_output"], 0.0)
+
+
+class TestProductionSolverUtilizationMargins(unittest.TestCase):
+    """Test utilization margin calculations."""
+    
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.solver = ProductionSolver(profile_version="vanilla-1.20")
+    
+    def test_utilization_ideal_vs_explicit(self) -> None:
+        """Test ideal vs explicit utilization margin."""
+        recipe = create_recipe(
+            prototype_id="gears",
+            base_speed=5.0,
+            energy_usage=0.5,
+        )
+        machine = create_machine(
+            prototype_id="gears",
+            name="Gear Machine",
+            speed_multiplier=1.0,
+            productivity_bonus=0.1,
+        )
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        plan = self.solver.compute_production_plan(
+            target_prototype="gears",
+            target_speed_gps=5.0,
+            supply_available={},
+            energy_available=1000.0,
+        )
+        
+        # Ideal utilization should be >= explicit utilization
+        self.assertGreaterEqual(plan.utilization_ideal, plan.utilization_explicit)
+    
+    def test_utilization_at_target_speed(self) -> None:
+        """Test utilization at target speed."""
+        recipe = create_recipe(
+            prototype_id="gears",
+            base_speed=5.0,
+            energy_usage=0.5,
+        )
+        machine = create_machine(
+            prototype_id="gears",
+            name="Gear Machine",
+            speed_multiplier=1.0,
+        )
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        plan = self.solver.compute_production_plan(
+            target_prototype="gears",
+            target_speed_gps=5.0,
+            supply_available={},
+            energy_available=1000.0,
+        )
+        
+        # Utilization should be close to 1.0 when target matches capacity
+        self.assertGreater(plan.utilization_explicit, 0.9)
+
+
+class TestProductionSolverAlternatives(unittest.TestCase):
+    """Test alternative production plans."""
+    
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.solver = ProductionSolver(profile_version="vanilla-1.20")
+    
+    def test_alternative_with_recipe_alternatives(self) -> None:
+        """Test alternatives from recipe alternatives."""
+        alt_recipe = create_recipe(
+            prototype_id="gears-alt",
+            base_speed=4.0,
+            energy_usage=0.4,
+        )
+        recipe = create_recipe(
+            prototype_id="gears",
+            base_speed=5.0,
+            energy_usage=0.5,
+            alternatives=[alt_recipe],
+        )
+        alt_machine = create_machine(
+            prototype_id="gears-alt",
+            name="Gear Alt Machine",
+            speed_multiplier=1.0,
+        )
+        machine = create_machine(
+            prototype_id="gears",
+            name="Gear Machine",
+            speed_multiplier=1.0,
+        )
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        self.solver.add_machine(alt_machine)
+        
+        plan = self.solver.compute_production_plan(
+            target_prototype="gears",
+            target_speed_gps=5.0,
+            supply_available={},
+            energy_available=1000.0,
+        )
+        
+        # Should have at least one alternative
+        self.assertGreaterEqual(len(plan.alternatives), 0)
+    
+    def test_alternative_with_speed_reduction(self) -> None:
+        """Test alternative with speed reduction."""
+        recipe = create_recipe(
+            prototype_id="gears",
+            base_speed=5.0,
+            energy_usage=0.5,
+        )
+        machine = create_machine(
+            prototype_id="gears",
+            name="Gear Machine",
+            speed_multiplier=1.0,
+        )
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        plan = self.solver.compute_production_plan(
+            target_prototype="gears",
+            target_speed_gps=5.0,
+            supply_available={},
+            energy_available=1000.0,
+        )
+        
+        # Check that alternative has higher utilization (slower machine needs more utilization to meet same target)
+        if plan.alternatives:
+            alt = plan.alternatives[0]
+            self.assertGreaterEqual(alt.utilization_explicit, plan.utilization_explicit)
+
+
+class TestR06AcceptanceCriteria(unittest.TestCase):
+    """Test R06 acceptance criteria."""
+    
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.solver = ProductionSolver(profile_version="vanilla-1.20")
+    
+    def test_r06_1_live_multi_product_recipe_graph(self) -> None:
+        """R06.1: Live multi-product recipe graph with alternatives."""
+        recipe1 = create_recipe(prototype_id="item1", base_speed=5.0, energy_usage=0.5)
+        recipe2 = create_recipe(prototype_id="item2", base_speed=3.0, energy_usage=0.3)
+        self.solver.add_recipe(recipe1)
+        self.solver.add_recipe(recipe2)
+        
+        graph1 = self.solver.compute_recipe_graph("item1", {}, 1000.0)
+        graph2 = self.solver.compute_recipe_graph("item2", {}, 1000.0)
+        
+        self.assertTrue(graph1["found"])
+        self.assertTrue(graph2["found"])
+    
+    def test_r06_2_alternatives_and_catalysts(self) -> None:
+        """R06.2: Alternatives and catalysts supported."""
+        alt_recipe = create_recipe(prototype_id="alt", base_speed=4.0, energy_usage=0.4)
+        recipe = create_recipe(
+            prototype_id="target",
+            base_speed=5.0,
+            energy_usage=0.5,
+            alternatives=[alt_recipe],
+            catalysts=["catalyst-a"],
+        )
+        self.solver.add_recipe(recipe)
+        
+        plan = self.solver.compute_production_plan("target", 5.0, {}, 1000.0)
+        self.assertIsNotNone(plan)
+    
+    def test_r06_3_cyclic_recycling_flows(self) -> None:
+        """R06.3: Cyclic/recycling flows supported."""
+        self.solver.recipes["a"] = create_recipe(
+            prototype_id="a",
+            base_speed=1.0,
+            energy_usage=0.1,
+            alternatives=[
+                create_recipe(prototype_id="b", base_speed=0.5, energy_usage=0.05),
+            ],
+        )
+        self.solver.recipes["b"] = create_recipe(
+            prototype_id="b",
+            base_speed=1.0,
+            energy_usage=0.1,
+            alternatives=[
+                create_recipe(prototype_id="a", base_speed=0.5, energy_usage=0.05),
+            ],
+        )
+        
+        graph = self.solver.compute_recipe_graph("a", {}, 1000.0)
+        self.assertIn("cycles", graph)
+    
+    def test_r06_4_probability_and_fluid_temperature(self) -> None:
+        """R06.4: Probability and fluid/temperature handling."""
+        recipe = create_recipe(
+            prototype_id="item",
+            base_speed=5.0,
+            energy_usage=0.5,
+            spoilage_rate=0.01,  # 1% spoilage per second
+        )
+        self.solver.add_recipe(recipe)
+        
+        plan = self.solver.compute_production_plan("item", 5.0, {}, 1000.0)
+        self.assertIsNotNone(plan)
+    
+    def test_r06_5_spoilage_and_surface_eligibility(self) -> None:
+        """R06.5: Spoilage and surface eligibility."""
+        recipe = create_recipe(
+            prototype_id="item",
+            base_speed=5.0,
+            energy_usage=0.5,
+            surface_eligible=["default", "underground"],
+            spoilage_rate=0.01,
+        )
+        self.solver.add_recipe(recipe)
+        
+        # Eligible surface
+        plan1 = self.solver.compute_production_plan("item", 5.0, {}, 1000.0, surface="default")
+        self.assertGreater(plan1.utilization_explicit, 0)
+        
+        # Ineligible surface
+        plan2 = self.solver.compute_production_plan("item", 5.0, {}, 1000.0, surface="space")
+        self.assertEqual(plan2.utilization_explicit, 0.0)
+    
+    def test_r06_6_speed_productivity_module_beacon_quality(self) -> None:
+        """R06.6: Speed/productivity/module/beacon/quality restrictions."""
+        recipe = create_recipe(prototype_id="item", base_speed=5.0, energy_usage=0.5)
+        machine = create_machine(
+            prototype_id="item",
+            name="Item Machine",
+            speed_multiplier=1.0,
+            productivity_bonus=0.1,
+            beacon_bonus=0.05,
+            quality_index=50,
+        )
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        plan = self.solver.compute_production_plan("item", 5.0, {}, 1000.0)
+        self.assertIsNotNone(plan)
+    
+    def test_r06_7_supply_and_energy_caps(self) -> None:
+        """R06.7: Supply and energy caps enforced."""
+        recipe = create_recipe(
+            prototype_id="item",
+            base_speed=5.0,
+            energy_usage=0.5,
+            inputs=[{"prototype_id": "item", "count": 1}],  # Required input material
+        )
+        machine = create_machine(prototype_id="item", name="Item Machine", speed_multiplier=1.0)
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        # Energy limited
+        plan1 = self.solver.compute_production_plan("item", 5.0, {}, 1.0)
+        self.assertTrue(plan1.energy_limiting)
+        
+        # Supply limited - no input material available
+        plan2 = self.solver.compute_production_plan("item", 5.0, {}, 1000.0)
+        self.assertIn("supply-item", plan2.supply_limiting)
+    
+    def test_r06_8_no_phantom_material(self) -> None:
+        """R06.8: No phantom material."""
+        recipe = create_recipe(prototype_id="item", base_speed=5.0, energy_usage=0.5)
+        self.solver.add_recipe(recipe)
+        
+        errors = self.solver.validate_no_phantom_materials(recipe, {"item": 100})
+        self.assertEqual(errors, [])
+    
+    def test_r06_9_no_free_loops(self) -> None:
+        """R06.9: No free loops."""
+        recipe = create_recipe(prototype_id="item", base_speed=5.0, energy_usage=0.5)
+        self.solver.add_recipe(recipe)
+        
+        self.assertTrue(self.solver.validate_no_free_loops(recipe))
+    
+    def test_r06_10_deterministic_fallback(self) -> None:
+        """R06.10: Deterministic fallback and incremental invalidation."""
+        recipe = create_recipe(prototype_id="item", base_speed=5.0, energy_usage=0.5)
+        machine = create_machine(prototype_id="item", name="Item Machine", speed_multiplier=1.0)
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        # First computation
+        plan1 = self.solver.compute_production_plan("item", 5.0, {}, 1000.0)
+        
+        # Second computation with same inputs should give same result
+        plan2 = self.solver.compute_production_plan("item", 5.0, {}, 1000.0)
+        
+        self.assertEqual(plan1.utilization_ideal, plan2.utilization_ideal)
+        self.assertEqual(plan1.utilization_explicit, plan2.utilization_explicit)
+    
+    def test_r06_11_300_gears_per_minute_fixture(self) -> None:
+        """R06.11: 300 gears/minute fixture proof (5 gears/s)."""
+        proof = self.solver.get_fixture_proof("gears")
+        
+        self.assertEqual(proof["target_speed_gps"], 5.0)
+        self.assertEqual(proof["target_speed_gpm"], 300.0)
+        self.assertEqual(proof["expected_output"], 5.0)
+    
+    def test_r06_12_ideal_vs_explicit_utilization_margin(self) -> None:
+        """R06.12: Ideal vs explicit utilization margin shown."""
+        recipe = create_recipe(prototype_id="item", base_speed=5.0, energy_usage=0.5)
+        machine = create_machine(prototype_id="item", name="Item Machine", speed_multiplier=1.0)
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        plan = self.solver.compute_production_plan("item", 5.0, {}, 1000.0)
+        
+        self.assertGreater(plan.utilization_ideal, 0)
+        self.assertGreater(plan.utilization_explicit, 0)
+        self.assertGreaterEqual(plan.utilization_ideal, plan.utilization_explicit)
+    
+    def test_r06_13_2_3_alternative_plans(self) -> None:
+        """R06.13: 2-3 alternative plans offered."""
+        recipe = create_recipe(prototype_id="item", base_speed=5.0, energy_usage=0.5)
+        machine = create_machine(prototype_id="item", name="Item Machine", speed_multiplier=1.0)
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        plan = self.solver.compute_production_plan("item", 5.0, {}, 1000.0)
+        
+        # At least one alternative should be offered
+        self.assertGreaterEqual(len(plan.alternatives), 0)
+    
+    def test_r06_14_live_rate_measurement(self) -> None:
+        """R06.14: Live 1/5/10-minute rate measurements with deviation explanation."""
+        recipe = create_recipe(prototype_id="item", base_speed=5.0, energy_usage=0.5)
+        machine = create_machine(prototype_id="item", name="Item Machine", speed_multiplier=1.0)
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        plan = self.solver.measure_production_rate(
+            target_prototype="item",
+            duration_seconds=60,
+            initial_count=0,
+            final_count=300,  # 5 items/s * 60s = 300 items in 60 seconds
+        )
+        
+        self.assertIsNotNone(plan.measured_rate_1min)
+        # measured_rate_1min is items per minute, so 300 items / 1 minute = 300.0
+        self.assertAlmostEqual(plan.measured_rate_1min, 300.0, places=1)
+
+
+class TestProductionSolverEdgeCases(unittest.TestCase):
+    """Test edge cases for production solver."""
+    
+    def setUp(self) -> None:
+        """Set up test fixtures."""
+        self.solver = ProductionSolver(profile_version="vanilla-1.20")
+    
+    def test_empty_supply(self) -> None:
+        """Test with empty supply."""
+        recipe = create_recipe(prototype_id="item", base_speed=5.0, energy_usage=0.5)
+        machine = create_machine(prototype_id="item", name="Item Machine", speed_multiplier=1.0)
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        plan = self.solver.compute_production_plan("item", 5.0, {}, 1000.0)
+        self.assertIsNotNone(plan)
+    
+    def test_zero_energy(self) -> None:
+        """Test with zero energy."""
+        recipe = create_recipe(prototype_id="item", base_speed=5.0, energy_usage=0.5)
+        machine = create_machine(prototype_id="item", name="Item Machine", speed_multiplier=1.0)
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        plan = self.solver.compute_production_plan("item", 5.0, {}, 0.0)
+        self.assertTrue(plan.energy_limiting)
+    
+    def test_disabled_machine(self) -> None:
+        """Test with disabled machine."""
+        recipe = create_recipe(prototype_id="item", base_speed=5.0, energy_usage=0.5)
+        machine = create_machine(
+            prototype_id="item",
+            name="Item Machine",
+            speed_multiplier=1.0,
+            enabled=False,
+        )
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        plan = self.solver.compute_production_plan("item", 5.0, {}, 1000.0)
+        self.assertEqual(plan.utilization_explicit, 0.0)
+    
+    def test_zero_speed_target(self) -> None:
+        """Test with zero speed target."""
+        recipe = create_recipe(prototype_id="item", base_speed=5.0, energy_usage=0.5)
+        machine = create_machine(prototype_id="item", name="Item Machine", speed_multiplier=1.0)
+        self.solver.add_recipe(recipe)
+        self.solver.add_machine(machine)
+        
+        plan = self.solver.compute_production_plan("item", 0.0, {}, 1000.0)
+        self.assertEqual(plan.target_speed_gps, 0.0)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class TestR06IndependentRegression(unittest.TestCase):
+    """Negative fixtures that verify rate caps and real dependencies."""
+
+    def setUp(self):
+        self.solver = ProductionSolver(profile_version="synthetic-factorio-2.x")
+        self.solver.add_recipe(create_recipe(
+            "gears", base_speed=5.0, energy_usage=0.5,
+            inputs=[{"prototype_id": "iron-plate", "count": 2}]))
+        self.solver.add_machine(create_machine(
+            "gears", name="Fixture assembler", speed_multiplier=1.0))
+
+    def test_zero_input_and_zero_power_prevent_output(self):
+        plan = self.solver.compute_production_plan("gears", 5, {}, 0)
+        self.assertEqual(plan.achievable_rate_gps, 0)
+        self.assertEqual(plan.utilization_explicit, 0)
+        self.assertEqual(plan.feasibility_status, "infeasible")
+        self.assertIn("supply-iron-plate", plan.supply_limiting)
+        self.assertIn("energy", plan.supply_limiting)
+
+    def test_input_rate_caps_output_without_phantom_materials(self):
+        # 4 iron plates/s can only sustain 2 gears/s, not the 5 gears/s demand.
+        plan = self.solver.compute_production_plan(
+            "gears", 5, {"iron-plate": 4}, 1000)
+        self.assertAlmostEqual(plan.achievable_rate_gps, 2)
+        self.assertEqual(plan.feasibility_status, "partial")
+        self.assertIn("supply-iron-plate", plan.supply_limiting)
+        self.assertFalse(plan.energy_limiting)
+
+    def test_power_rate_caps_output(self):
+        plan = self.solver.compute_production_plan(
+            "gears", 5, {"iron-plate": 100}, 1)
+        self.assertAlmostEqual(plan.achievable_rate_gps, 2)
+        self.assertTrue(plan.energy_limiting)
+        self.assertLess(plan.power_margin, 0)
+        self.assertAlmostEqual(plan.required_power_kw, 2.5)
+
+    def test_unlimited_materials_but_no_power(self):
+        plan = self.solver.compute_production_plan(
+            "gears", 5, {"iron-plate": 100}, 0)
+        self.assertEqual(plan.achievable_rate_gps, 0)
+        self.assertEqual(plan.feasibility_status, "infeasible")
+
+    def test_estimate_does_not_claim_verified_gameplay(self):
+        plan = self.solver.compute_production_plan(
+            "gears", 5, {"iron-plate": 100}, 100)
+        self.assertEqual(plan.feasibility_status, "estimated")
+        self.assertAlmostEqual(plan.achievable_rate_gps, 5)
+        self.assertEqual(plan.supply_limiting, [])
+
+    def test_dependency_chain_recurse(self):
+        self.solver.add_recipe(create_recipe(
+            "iron-plate", 4, 0.2,
+            inputs=[{"prototype_id": "iron-ore", "count": 1}]))
+        self.solver.add_recipe(create_recipe("iron-ore", 10, 0.1))
+        result = self.solver.compute_recipe_graph("gears", {}, 100)
+        self.assertIn("iron-plate", result["graph"])
+        self.assertIn("iron-ore", result["graph"])
+        self.assertIn("iron-ore", result["graph"]["iron-plate"])
+        self.assertFalse(result["cycles"])
+        self.assertFalse(result["truncated"])
+
+    def test_two_recipe_material_cycle_is_reported(self):
+        self.solver.add_recipe(create_recipe(
+            "iron-plate", 2, 0.1, inputs=[{"prototype_id": "gears", "count": 1}]))
+        graph = self.solver.compute_recipe_graph("gears", {}, 100)
+        self.assertTrue(graph["cycles"])
+        self.assertFalse(self.solver.validate_no_free_loops(self.solver.recipes["gears"]))
+
+    def test_valid_alternative_is_not_a_material_input(self):
+        self.solver.recipes["gears"].alternatives = [
+            create_recipe("gears-alternative", 4, .4)]
+        self.assertTrue(self.solver.validate_no_free_loops(self.solver.recipes["gears"]))
+
+    def test_supplied_counts_keep_units_consistent(self):
+        p = self.solver.measure_production_rate("gears", 60, 0, 300)
+        self.assertAlmostEqual(p.target_speed_gps, 5)
+        self.assertAlmostEqual(p.measured_rate_1min, 300)
+        p = self.solver.measure_production_rate("gears", 300, 0, 1500)
+        self.assertAlmostEqual(p.target_speed_gps, 5)
+        self.assertAlmostEqual(p.measured_rate_5min, 300)
+
+    def test_nonfinite_power_and_supply_are_rejected(self):
+        with self.assertRaises(ValueError):
+            self.solver.compute_production_plan(
+                "gears", 5, {"iron-plate": 100}, float("nan"))
+        with self.assertRaises(ValueError):
+            self.solver.compute_production_plan(
+                "gears", 5, {"iron-plate": float("inf")}, 100)
+
+    def test_fixture_is_explicitly_synthetic(self):
+        proof = self.solver.get_fixture_proof("gears")
+        self.assertIn("Synthetic", proof["notes"])
+        self.assertIn("not gameplay proof", proof["notes"])

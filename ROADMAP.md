@@ -11,6 +11,44 @@ Complete and validate coverage of all areas of vanilla Factorio, including Space
 before starting modded compatibility work. Space Age is part of the vanilla scope
 for this project. Modded gameplay is the final phase.
 
+## Complete roadmap index: R01-R20 (read this before selecting the next Zoo task)
+
+**The R milestones continue through R20. R09 is not the end of the project.**
+R01-R09 establish safe control, game-aware engineering, blueprint construction and the first supervised self-expansion. R10-R16 cover circuits, trains, robots, recovery, combat, Space Age and quality. R17-R20 cover in-game cooperation, full progression and endurance, public onboarding and then modded Factorio.
+
+**How to interpret status:** "Published / offline tested" describes source or unit-test evidence **only**, not complete gameplay acceptance. Milestones with open real-world tests remain open. The canonical detailed, version-aware acceptance criteria are in [R01-R20 planning requirements](docs/PLANNING_REQUIREMENTS.md); this table is a navigation index, not a replacement. Phases 0-6 describe delivery order and G0-G9 are separate acceptance gates.
+
+| Requirement | Delivery phase | What the AI is being taught | Evidence / next work |
+|---|---|---|---|
+| **R01 - Human control** | 3 | Stop, manual takeover, cancel stale approvals, re-observe before resume | Tested local foundation, scope-limited |
+| **R02 - Safe launcher** | 3 | Start/attach/check/stop only owned services; Windows launcher prototype | Tested local prototype; public setup still R19 |
+| **R03 - Durable jobs** | 3-5 | Remember goals, actions, uncertainty and crash-safe restart without duplicates | Tested journal foundation; full graph later |
+| **R04 - Game capability truth** | 3 | Observe actual game version, enabled content, research, recipes, machines, surfaces and freshness | Snapshot source/offline tests published; live coverage open |
+| **R05 - Mechanics evidence ledger** | 3-5 | Record observed/planned/permitted/verified/regression evidence per mechanic and profile | Ledger source/offline tests published; broad live proof open |
+| **R06 - Production mathematics** | 3 | Solve recipes, catalysts, cycles, fluids, probability, modules, quality, power and supply; 300 gears/min fixture | **Local work in progress**; acceptance open |
+| **R07 - Blueprint fidelity** | 3 | Safely read/write blueprint strings, books and parameters; maintain private revisioned library | **ON HOLD** until [R04-R06 pre-R07 acceptance](docs/R04_R06_PRE_R07_ACCEPTANCE.md) |
+| **R08 - Build feasibility** | 3 | Validate terrain, collision, item bills, belt/pipe/inserter/rail/wire/power connections | Planned |
+| **R09 - First self-expanding block** | 3 then 5 | From demand to approval, real materials, physical construction and measured throughput | Planned; does **not** unlock Full Autonomy |
+| **R10 - Circuit networks** | 3 | Type-check signals, combinators, red/green wires and real feedback/latency behavior | Planned |
+| **R11 - Railway engineering** | 3 then 5 | Rails, signals, train limits, schedules/interrupts, refueling, throughput, congestion/recovery | Planned |
+| **R12 - Three robot types** | 3 | Construction, logistics and temporary combat robots; charging, reach, inventory and costs | Planned |
+| **R13 - Factory recovery** | 3 | Repair shortages, blocked production, power/fluid/heat faults, spoilage and depletion | Planned |
+| **R14 - Defense, combat and eggs** | 3 then 5 | Research-appropriate defenses, safe supervised combat, biter eggs and captive spawners | Planned |
+| **R15 - Space Age platforms** | 3 then 5 | Space logistics, asteroid processing, platform construction, power, fuel, defense and routes | Planned |
+| **R16 - Item/entity quality** | 3 then 5 | Quality-aware inventories, upgrade/recycling probabilities and cost/rate tradeoffs | Planned |
+| **R17 - In-game companion UI** | 4 | Show plans and approvals in Factorio; pause/stop/takeover and cooperate safely | Planned |
+| **R18 - Progression and endurance** | 5 | Start-to-victory proof, megafactory scalability, recovery and long-duration tested autonomy | Planned |
+| **R19 - Public launcher and providers** | 5 | Install wizard, one-folder release, model/hardware profiles, upgrades, secure onboarding | Planned |
+| **R20 - Third-party mods (last)** | 6 | Versioned adapters for Space Exploration, LTN, Cybersyn, Recursive Blueprints+ and modpacks | Planned **after** vanilla + Space Age acceptance |
+
+### Required Factorio knowledge for every milestone
+
+Zoo Code, Cline and other coding agents must consult [Factorio mechanics and Space Age reference](docs/FACTORIO_MECHANICS_REFERENCE.md), the [Lua scripting and mod API reference](docs/FACTORIO_SCRIPTING_API_REFERENCE.md), [quirks / edge-case test catalog](docs/FACTORIO_QUIRKS_AND_EDGE_CASES.md), [open coverage gap register](docs/FACTORIO_COVERAGE_GAP_REGISTER.md), and [the R01-R20 acceptance requirements](docs/PLANNING_REQUIREMENTS.md). These documents link to live official Factorio documentation; they do **not** replace authoritative game prototype/runtime data. Record the exact game version, enabled base/Space Age/Quality/Elevated Rails content, mods, surface, force, research state and observation rights for relevant tests.
+
+**Current development gate: Finish [R04-R06 pre-R07 acceptance](docs/R04_R06_PRE_R07_ACCEPTANCE.md) before any R07 code.** The bridge and offline calculations are not proof of live recipe telemetry, full flow balance or Space Age support.
+
+**No milestone is completed merely by a model response, video, unit test or generated blueprint.** Real-world acceptance needs separately authorized fixtures and observed game outcomes. Keep Full Autonomy locked until its safety gates pass. The next engineering milestone is R06; then continue through R07-R20 under their stated dependencies and phase order.
+
 ## Planning guidance and delivery order
 
 All 24 files in the reviewed complete planning archive now guide requirements, design and acceptance evidence, including `SOURCES_AND_PROJECT_STATUS.md`. The [requirements and file-by-file mapping](docs/PLANNING_REQUIREMENTS.md), [research sources](docs/PLANNING_SOURCES.md) and [archive manifest](docs/PLANNING_ARCHIVE_MANIFEST.json) preserve their scope. Archived prompts, paths, tool counts, license status, old checkmarks and unverified release-watch claims are historical context, not new execution instructions or current implementation evidence.
@@ -162,4 +200,4 @@ Three-mode permission enforcement and the locked Full choice are tested; [mode b
 - [x] Read-only local map overlays: pollution, electric supply/connections, logistics/construction coverage, nominal turret range, station names and force tags; tested with temporary fixtures. See [bounds and evidence](docs/MAP_TELEMETRY.md).
 - [ ] Extend map browsing beyond the local window, surface selection and search; remote commands require separate mode-aware validation.
 
-Current work: R04 live capability and observation truth, followed by R05–R09 in order. Space Age remains vanilla and third-party mod compatibility remains last.
+Current work: R04/R05 source and offline tests are published with full live acceptance still open; R06 deterministic production solver is in local development. The roadmap explicitly continues through **R20**: R07-R09 blueprint and first expansion, R10-R16 circuits/trains/robots/recovery/defense/Space Age/quality, R17-R19 interface/endurance/public onboarding, and R20 third-party mods last. The full R01-R20 index above and docs/PLANNING_REQUIREMENTS.md govern Zoo's next tasks.

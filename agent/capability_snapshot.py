@@ -20,6 +20,7 @@ Acceptance criteria (R04):
 
 import hashlib
 import json
+import math
 from typing import Any, Literal
 
 # Status enum for capability snapshots
@@ -126,11 +127,14 @@ def assess_capability_snapshot(
     
     # Validate timestamps
     observed_at = snapshot.get("observed_at")
-    if not isinstance(observed_at, (int, float)) or observed_at < 0:
-        raise ValueError("snapshot['observed_at'] must be nonnegative float")
-    
-    if now < observed_at:
-        raise ValueError("now must be >= observed_at")
+    if type(observed_at) not in (int, float) or not math.isfinite(observed_at) or observed_at < 0:
+        raise ValueError("snapshot['observed_at'] must be finite and nonnegative")
+
+    if type(now) not in (int, float) or not math.isfinite(now) or now < observed_at:
+        raise ValueError("now must be finite and >= observed_at")
+
+    if type(max_age) not in (int, float) or not math.isfinite(max_age) or max_age < 0:
+        raise ValueError("max_age must be finite and nonnegative")
     
     # Compute age
     age = now - observed_at
