@@ -25,6 +25,7 @@ These capabilities have been tested in a local development setup. We have **not*
 - Improved dashboard with map, inventory, objectives, and history
 - Optional, expandable in-game AutoEngineer panel and player assistance
 - Mod-aware prototype and recipe discovery, including Space Age and community overhauls
+- Continuous offline synthetic Pyanodons-shaped stress benchmarks during AI Helper, dashboard and telemetry development; actual pY gameplay tests stay isolated and unqualified until supported (see [benchmark contract](docs/CONTINUOUS_MOD_BENCHMARKS.md))
 - Eventually, unattended autonomy with explicit limits and recovery behavior
 
 ## Architecture (prototype)
@@ -51,7 +52,7 @@ Never commit passwords, API keys, saves, model weights, downloaded binaries, loc
 
 The supervised prototype source is available in [`agent/`](agent/). Follow the [setup and safety instructions](docs/PROTOTYPE_SETUP.md), including the required [backend safety patch](backend-safety/README.md). Install the approved source package with the hashed Python lockfile and the combined restricted-backend patch. There is no installer or stable release.
 
-The actual dashboard Stop and Close controls, process-loss behavior and connection-loss behavior were tested in a disposable Factorio world. Read the [validation record and its limits](docs/SAFETY_VALIDATION.md). Further development is tracked in the [roadmap](ROADMAP.md).
+The actual dashboard Stop and Close controls, process-loss behavior and connection-loss behavior were tested in a disposable Factorio world. Read the [validation record and its limits](docs/SAFETY_VALIDATION.md). Further development is tracked in the [roadmap](ROADMAP.md) and the [October 19 development decisions](docs/DEVELOPMENT_DECISIONS_2026-10-19.md).
 
 ## Contributing
 

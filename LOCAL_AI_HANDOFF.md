@@ -7,7 +7,7 @@ Current focus: R04 capability and observation truth, then R05–R09 in roadmap o
 - R01: dashboard Take Control and explicit Resume; input-only Factorio helper revokes the agent lease. Real player input, scripted planning/walk revocation and stopped-position checks passed.
 - R02: source/frozen ownership, readiness, occupied ports, duplicate launchers, startup cancellation, crashes and shutdown passed. Actual launcher Start, Emergency Stop, explicit restart, Stop owned services and Close passed.
 - R03: agent/job_journal.py records action states before dispatch, preserves uncertainty after crashes, and blocks replay until fresh observation and explicit review. Six live crash boundaries passed without duplicate crafting. Review is not proof that an action succeeded. The graph currently contains sequential action dependencies, not a complete factory production graph.
-- Preserve human approval, emergency stopping, normal game speed and the five-tile movement bound. Fully Autonomous stays locked. Space Age is vanilla; third-party gameplay mods come last.
+- Preserve human approval, emergency stopping, normal game speed and the five-tile movement bound. Fully Autonomous stays locked. Space Age is vanilla; third-party gameplay compatibility comes last. Continuous offline pY-shaped graph benchmarks begin now and real pY must be isolated; see docs/CONTINUOUS_MOD_BENCHMARKS.md. These tests do not unlock modded gameplay or R07.
 - Use only the established isolated test save. Never operate other saves or silently approve gameplay.
 - Never access private configuration, credentials, saves, logs or downloaded model weights. Never upload or publish. Keep MIT and backend attribution unchanged.
 

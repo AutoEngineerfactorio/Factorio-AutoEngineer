@@ -1,6 +1,6 @@
 # Development roadmap
 
-This is a planning roadmap, not a promise of release dates.
+This is a planning roadmap, not a promise of release dates. See also the [October 19 development decisions](docs/DEVELOPMENT_DECISIONS_2026-10-19.md) for the current three-mode priority, online reference research, time-tools guardrails, Zoo Code review and pY benchmark agreement.
 
 The target is autonomous operation with human supervision: the agent plans and
 executes routine actions within agreed limits, while the user can monitor, pause,
@@ -8,8 +8,13 @@ override or stop it. Risky or out-of-scope decisions require approval. Per-movem
 approval remains a development safeguard until supervised autonomy is validated.
 
 Complete and validate coverage of all areas of vanilla Factorio, including Space Age,
-before starting modded compatibility work. Space Age is part of the vanilla scope
-for this project. Modded gameplay is the final phase.
+before claiming third-party modded gameplay compatibility. Space Age is part of
+the vanilla scope for this project. Full modded gameplay remains the final phase.
+**Continuous development exception:** benchmark R04–R06 data handling and solver
+complexity against synthetic pY-shaped scenarios now, then version-pinned, read-only
+Pyanodons (pY) catalogs in a separate isolated test profile once the safe telemetry
+adapter exists. This is early performance/architecture testing, **not** an R20
+gameplay acceptance claim. See [continuous modded benchmarks](docs/CONTINUOUS_MOD_BENCHMARKS.md).
 
 ## Complete roadmap index: R01-R20 (read this before selecting the next Zoo task)
 
