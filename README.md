@@ -52,7 +52,7 @@ Never commit passwords, API keys, saves, model weights, downloaded binaries, loc
 
 The supervised prototype source is available in [`agent/`](agent/). Follow the [setup and safety instructions](docs/PROTOTYPE_SETUP.md), including the required [backend safety patch](backend-safety/README.md). Install the approved source package with the hashed Python lockfile and the combined restricted-backend patch. There is no installer or stable release.
 
-The actual dashboard Stop and Close controls, process-loss behavior and connection-loss behavior were tested in a disposable Factorio world. Read the [validation record and its limits](docs/SAFETY_VALIDATION.md). Further development is tracked in the [roadmap](ROADMAP.md) and the [October 19 development decisions](docs/DEVELOPMENT_DECISIONS_2026-10-19.md).
+The actual dashboard Stop and Close controls, process-loss behavior and connection-loss behavior were tested in a disposable Factorio world. Read the [validation record and its limits](docs/SAFETY_VALIDATION.md). Further development is tracked in the [roadmap](ROADMAP.md), the [Helper-first and Gate H1 contract](docs/HELPER_FIRST_GATE_H1.md), the [October 19 decisions](docs/DEVELOPMENT_DECISIONS_2026-10-19.md), and the [Zoo Code review protocol](docs/ZOO_CODE_TASK_PROTOCOL.md). **AI Helper and Dashboard must be validated before expanding Semi-Autonomous; Full remains locked until later independent gates.**
 
 ## Contributing
 

@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
-from time import perf_counter
 import tracemalloc
+from pathlib import Path
+from time import perf_counter
 
 # The existing solver supports direct imports from the agent directory.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))

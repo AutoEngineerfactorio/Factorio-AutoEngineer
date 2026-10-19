@@ -8,7 +8,7 @@ This handoff records the user's current priorities for the existing project. It 
 2. **Semi-Autonomous:** only after component-specific tests; human-approved bounded actions, re-observation and fail-closed Stop/takeover.
 3. **Fully Autonomous:** stays visibly locked until all required acceptance gates pass; no unilateral expansion of permissions.
 
-The immediate delivery order is **R04 telemetry/data truth → dashboard integration → R05/R06 deterministic AI Helper → R07 blueprint codec/preview after the pre-R07 gate**. Later R08/R09 handle feasible construction, actual supply and verified production. This is a feature priority, not an assertion that R05/R06 are complete.
+The binding delivery order is **R04 telemetry/data truth → Dashboard/R05/R06 deterministic AI Helper → pre-R07 data/math readiness → read-only Blueprint Studio (R07 and read-only R08) → version/provenance-checked design discovery → Gate H1 user signoff → expanded Semi-Autonomous R08–R16 → much later, independently qualified Full Autonomy**. Physical construction, real supply and verified production are gameplay requirements after H1; separately authorized pre-H1 human-built factory measurements may be required for H1 evidence. See [Helper-first details and measurable Gate H1](HELPER_FIRST_GATE_H1.md). This is prioritization, not a claim those features or the gate are complete.
 
 ## AI Helper: more capable than a Helmod-style calculator
 
@@ -38,6 +38,6 @@ Optional time-acceleration/time-tools mods must never silently alter reproducibl
 - Keep the existing FactorioMCP fork/source, restricted backend policies, legal game mechanics, five-tile bounded development movement and human safety controls.
 - R04/R05: establish authenticated, bounded, paginated live observations of game/mod/research/recipe state with freshness and provenance.
 - R06: build and validate multi-product deterministic math, offline fixture cases and eventually isolated physical measurements at 1/5/10-minute windows.
-- R07 blueprint work stays blocked by [pre-R07 acceptance](R04_R06_PRE_R07_ACCEPTANCE.md); semi/full autonomy remain later.
+- R07 read-only blueprint authoring stays blocked by the **narrow** [pre-R07 readiness](R04_R06_PRE_R07_ACCEPTANCE.md); its fidelity and safety are required for later [Gate H1](HELPER_FIRST_GATE_H1.md). Semi feature expansion is locked until H1, and Full Autonomy requires additional gates.
 
 **Current change scope:** documentation, synthetic read-only benchmarks and tests. No remote game control, Factorio version upgrade, live pY installation, automatic Zoo Code watcher, blueprint placement or release were executed here.
