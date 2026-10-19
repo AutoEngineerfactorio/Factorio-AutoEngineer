@@ -65,14 +65,76 @@ def snapshot(raw):
             k: c[k]
             for k in ("input_adapter", "character_control", "lease_active", "walking", "generation")
         }
-    # Optional same-tick, bounded capability metadata from a future audited
-    # backend. Old policy-8 backends do not send it and remain observation-only.
+    # Older policy-8 backends omit this same-tick metadata and remain observation-only.
+    capabilities = None
     if "capabilities" in raw:
         from read_only_planning import validate_capabilities
 
-        data["capabilities"] = validate_capabilities(
+        capabilities = validate_capabilities(
             raw["capabilities"], data["surface"], data["tick"]
         )
+        data["capabilities"] = capabilities
+    if "catalog_status" in raw:
+        status = raw["catalog_status"]
+        if (not isinstance(status, dict)
+                or set(status) not in (
+                    {"page", "page_size", "status"},
+                    {"page", "page_size", "status", "total_count", "total_pages"},
+                    {"page", "page_size", "status", "total_count", "total_pages", "pages_collected"},
+                )
+                or type(status.get("page")) is not int or not 1 <= status["page"] <= 10000
+                or type(status.get("page_size")) is not int or not 1 <= status["page_size"] <= 32
+                or status.get("status") not in (
+                    "ok", "assembled", "assembly_failed", "page_out_of_range",
+                    "catalog_limit", "unavailable",
+                )):
+            raise ValueError("Invalid recipe catalog page status")
+        normalized = {key: status[key] for key in ("page", "page_size", "status")}
+        if "total_count" in status:
+            if (type(status["total_count"]) is not int or not 0 <= status["total_count"] <= 10000
+                    or type(status["total_pages"]) is not int or not 0 <= status["total_pages"] <= 10000):
+                raise ValueError("Invalid recipe catalog counts")
+            expected_pages = math.ceil(status["total_count"] / status["page_size"])
+            if status["total_pages"] != expected_pages:
+                raise ValueError("Inconsistent recipe catalog page count")
+            normalized.update(total_count=status["total_count"], total_pages=status["total_pages"])
+        if "pages_collected" in status:
+            if type(status["pages_collected"]) is not int or not 1 <= status["pages_collected"] <= 10000:
+                raise ValueError("Invalid assembled recipe page count")
+            normalized["pages_collected"] = status["pages_collected"]
+        if status["status"] == "ok" and "total_count" not in normalized:
+            raise ValueError("Missing recipe catalog counts")
+        if status["status"] == "ok":
+            if ((status["total_pages"] == 0 and status["page"] != 1)
+                    or (status["total_pages"] > 0 and status["page"] > status["total_pages"])):
+                raise ValueError("Successful recipe page is out of range")
+            if capabilities is None or len(capabilities["recipes"]) > status["page_size"]:
+                raise ValueError("Recipe page missing or exceeds declared size")
+            if (not capabilities["truncated"]
+                    and status["total_pages"] <= 1
+                    and status["total_count"] != len(capabilities["recipes"])):
+                raise ValueError("Incomplete recipe page cannot certify completeness")
+        elif status["status"] == "assembled":
+            expected_pages = max(1, status.get("total_pages", -1))
+            if ("total_count" not in normalized or "pages_collected" not in normalized
+                    or status["page"] != 1 or status["pages_collected"] != expected_pages
+                    or capabilities is None
+                    or len(capabilities["recipes"]) > status["total_count"]
+                    or (not capabilities["truncated"]
+                        and len(capabilities["recipes"]) != status["total_count"])
+                    or not capabilities.get("source_fingerprint")):
+                raise ValueError("Invalid assembled recipe catalog")
+        elif status["status"] == "assembly_failed":
+            if capabilities is not None:
+                raise ValueError("Failed recipe assembly must not expose catalog data")
+        elif status["status"] == "page_out_of_range":
+            if ("total_pages" not in normalized
+                    or status["page"] <= status["total_pages"]
+                    or capabilities is not None):
+                raise ValueError("Invalid out-of-range recipe page")
+        elif capabilities is not None:
+            raise ValueError("Recipe data present without a successful page")
+        data["catalog_status"] = normalized
     data.update(display_details(raw))
     return data
 

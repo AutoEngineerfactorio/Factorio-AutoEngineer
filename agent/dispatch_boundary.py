@@ -11,7 +11,7 @@ from verified_operations import validate_operation
 ALLOWED = {
     "autoengineer_operation_preview": {"kind", "name", "count"},
     "autoengineer_operation": {"kind", "name", "count", "safetyOwner", "targetX", "targetY"},
-    "autoengineer_view": set(),
+    "autoengineer_view": {"catalogPage", "catalogPageSize"},
     "autoengineer_policy": set(),
     "get_player_position": set(),
     "scan_resources": {"radius"},
@@ -80,6 +80,13 @@ class DispatchBoundary:
         args = dict(arguments or {})
         if name not in ALLOWED or set(args) - ALLOWED[name]:
             raise PermissionError("Tool or argument denied by dispatch boundary")
+        if name == "autoengineer_view":
+            page = args.get("catalogPage", 1)
+            page_size = args.get("catalogPageSize", 16)
+            if type(page) is not int or not 1 <= page <= 10000:
+                raise ValueError("Invalid catalog page")
+            if type(page_size) is not int or not 1 <= page_size <= 32:
+                raise ValueError("Invalid catalog page size")
         self.policy.authorize(name)
         if name in {"walk_to_position", "autoengineer_operation"}:
             permit, self._permit = self._permit, None

@@ -339,7 +339,7 @@ class Dashboard:
                 component_command("dashboard_observer"),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.STDOUT,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
@@ -523,6 +523,8 @@ class Dashboard:
                 if proc is self.observer:
                     if kind == "line" and value.startswith(PREFIX):
                         self.display_frame(value)
+                    elif kind == "line" and value.strip():
+                        self.append(value)
                     elif kind == "exit":
                         self.observer = None
                         self.live_view.update_frame({"status": "unavailable"})

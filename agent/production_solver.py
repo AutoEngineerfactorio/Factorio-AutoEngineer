@@ -1,33 +1,15 @@
 """
-R06 Deterministic Production Solver — Multi-product recipe graph with alternatives,
-catalysts, cyclic flows, probability, fluids/temperatures, spoilage and surface eligibility.
+This bounded estimator calculates a single recipe's output rate from caller-
+provided machine factors, sustained input throughputs, power budget and surface.
+Those inputs are not independently observed or validated against a live game.
+The separate gears fixture is synthetic offline arithmetic, not a factory proof.
 
-This module provides deterministic production calculations with:
-- Live multi-product recipe graph with alternatives and catalysts
-- Cyclic/recycling flows and probability handling
-- Fluid temperatures and spoilage tracking
-- Surface eligibility checks
-- Real speed/productivity/module/beacon/quality restrictions
-- Supply and energy caps
-- No phantom material or free loops
-- Deterministic fallback and incremental invalidation
-- 300 gears/minute fixture proof (5 gears/s and 10 plates/s)
-- Ideal versus explicit utilization margin
-- 2-3 cost/space/power/scalability alternatives
-
-Acceptance criteria (R06):
-1. Live multi-product recipe graph with alternatives
-2. Catalysts and cyclic/recycling flows supported
-3. Probability and fluid/temperature handling
-4. Spoilage and surface eligibility
-5. Speed/productivity/module/beacon/quality restrictions
-6. Supply and energy caps enforced
-7. No phantom material or free loops
-8. Deterministic fallback and incremental invalidation
-9. 300 gears/minute fixture proven (5 gears/s, 10 plates/s)
-10. Ideal vs explicit utilization margin shown
-11. 2-3 alternative plans offered
-12. Live 1/5/10-minute rate measurements with deviation explanation
+It does not solve multi-recipe or multi-product flow balance, optimize real
+recipe/machine alternatives, or verify machine/module/beacon/quality mechanics.
+Catalyst inventory and returns, cyclic/recycling flows, stochastic yields,
+fluid constraints and temperatures are unsupported. Spoilage is only a rough
+one-second multiplier. Caller-supplied rate measurements are not collected or
+proven live here. R06 and live-game acceptance remain incomplete.
 """
 
 import math
@@ -44,7 +26,7 @@ ProductionStatus = Literal["unavailable", "infeasible", "partial", "estimated", 
 class MaterialInput:
     """Represents a material input to a recipe."""
     prototype_id: str
-    count: int
+    count: float
     is_optional: bool = False
     is_catalyst: bool = False
     surface_required: list[str] = field(default_factory=list)
@@ -80,7 +62,7 @@ class Machine:
     """Represents a production machine with speed and restrictions."""
     prototype_id: str
     name: str
-    speed_multiplier: float = 1.0  # 0.0-1.0 range
+    speed_multiplier: float = 1.0  # nonnegative crafting-speed factor
     productivity_bonus: float = 0.0  # from modules
     productivity_penalty: float = 0.0  # from modules
     beacon_bonus: float = 0.0  # from beacon
@@ -106,15 +88,15 @@ class ProductionPlan:
     measured_rate_10min: Optional[float] = None
     deviation_explanation: Optional[str] = None
     feasibility_status: ProductionStatus = "unavailable"
-    achievable_rate_gps: float = 0.0  # Feasible output items/second for provided rate limits
+    achievable_rate_gps: float = 0.0  # Modeled output bound; not factory throughput proof
     required_power_kw: float = 0.0  # Power needed to meet target speed (kW)
 
 
 class ProductionSolver:
     """
-    R06 Deterministic Production Solver.
+    Bounded one-recipe throughput estimator; graph output is descriptive only.
     
-    Provides multi-product recipe graph calculations with:
+    The following capabilities are NOT provided or accepted by this estimator:
     - Recipe alternatives and catalysts
     - Cyclic/recycling flows
     - Probability and fluid/temperature handling
@@ -131,9 +113,9 @@ class ProductionSolver:
     GEAR_FIXTURE_SPEED = 5.0  # gears per second
     PLATE_FIXTURE_SPEED = 10.0  # plates per second
     
-    # Default machine for gears (Belt Miner or similar)
+    # Default fixture machine for gears.
     GEAR_MACHINE_PROTOTYPE = "assembling-machine-2"
-    # Default machine for plates (Belt Miner or similar)
+    # Default fixture machine for plates.
     PLATE_MACHINE_PROTOTYPE = "electric-furnace"
     
     def __init__(self, profile_version: str = "unbound-test-fixture"):
@@ -151,11 +133,48 @@ class ProductionSolver:
         self._max_cache_age = 5.0  # seconds
         
     def add_recipe(self, recipe: Recipe) -> None:
-        """Add a recipe to the solver."""
+        """Add a finite, structurally valid recipe estimate."""
+        if (not isinstance(recipe, Recipe) or not isinstance(recipe.prototype_id, str)
+                or not recipe.prototype_id or type(recipe.base_speed) not in (int, float)
+                or not math.isfinite(recipe.base_speed) or recipe.base_speed <= 0
+                or type(recipe.energy_usage) not in (int, float)
+                or not math.isfinite(recipe.energy_usage) or recipe.energy_usage < 0):
+            raise ValueError("Invalid recipe rate or identity")
+        if not isinstance(recipe.inputs, list) or not isinstance(recipe.surface_eligible, list):
+            raise ValueError("Invalid recipe inputs or surface eligibility")
+        for inp in recipe.inputs:
+            if (not isinstance(inp, MaterialInput) or not isinstance(inp.prototype_id, str)
+                    or not inp.prototype_id or type(inp.count) not in (int, float)
+                    or not math.isfinite(inp.count) or inp.count <= 0
+                    or type(inp.is_optional) is not bool or type(inp.is_catalyst) is not bool):
+                raise ValueError("Invalid recipe input")
+            if (not isinstance(inp.surface_required, list)
+                    or any(not isinstance(value, str) or not value for value in inp.surface_required)):
+                raise ValueError("Invalid input surface restriction")
+        if any(not isinstance(surface, str) or not surface for surface in recipe.surface_eligible):
+            raise ValueError("Invalid recipe surface")
         self.recipes[recipe.prototype_id] = recipe
         
     def add_machine(self, machine: Machine) -> None:
-        """Add a machine to the solver."""
+        """Add a finite machine estimate; crafting speed may exceed one."""
+        if not isinstance(machine, Machine):
+            raise ValueError("Invalid machine")
+        numbers = (
+            machine.speed_multiplier, machine.productivity_bonus,
+            machine.productivity_penalty, machine.beacon_bonus,
+        )
+        if (not isinstance(machine.prototype_id, str) or not machine.prototype_id
+                or not isinstance(machine.name, str) or type(machine.enabled) is not bool
+                or any(type(value) not in (int, float) or not math.isfinite(value)
+                       for value in numbers)
+                or machine.speed_multiplier < 0
+                or machine.productivity_penalty < 0
+                or machine.productivity_bonus < 0
+                or machine.beacon_bonus < 0
+                or (machine.quality_index is not None
+                    and (type(machine.quality_index) is not int
+                         or not 0 <= machine.quality_index <= 100))):
+            raise ValueError("Invalid machine parameters")
         self.machines[machine.prototype_id] = machine
         
     def _compute_effective_speed(
@@ -184,9 +203,8 @@ class ProductionSolver:
         # Base speed from recipe
         base_speed = recipe.base_speed
         
-        # Apply speed multiplier (0.0-1.0 range)
-        speed_multiplier = max(0.0, min(1.0, machine.speed_multiplier))
-        speed = base_speed * speed_multiplier
+        # Factorio machine crafting speeds are not limited to 1.0.
+        speed = base_speed * machine.speed_multiplier
         
         # Apply productivity bonuses/penalties
         speed *= (1.0 + machine.productivity_bonus - machine.productivity_penalty)
@@ -225,16 +243,14 @@ class ProductionSolver:
             available = supply_available.get(inp.prototype_id, 0)
             if type(available) not in (int, float) or not math.isfinite(available) or available < 0:
                 raise ValueError("Input supply must be finite and nonnegative")
-            # A returned catalyst requires initial availability even when not
-            # continuously consumed, but must not be double-charged per output.
-            required = inp.count if inp.is_catalyst else rated_speed * inp.count
+            # Input rates are throughput, not inventory. Catalyst starting stock
+            # cannot be established by this interface, so do not compare units.
+            if inp.is_catalyst:
+                continue
+            required = rated_speed * inp.count
             if available < required:
                 limiting_factors.append(f"supply-{inp.prototype_id}")
-            if inp.is_catalyst:
-                if available < inp.count:
-                    speed = 0.0
-            else:
-                speed = min(speed, available / inp.count)
+            speed = min(speed, available / inp.count)
 
         is_energy_limited = rated_speed * recipe.energy_usage > energy_available
         if is_energy_limited:
@@ -264,6 +280,24 @@ class ProductionSolver:
         Returns:
             ProductionPlan with alternatives and utilization margins
         """
+        if not isinstance(target_prototype, str) or not target_prototype:
+            raise ValueError("Invalid target prototype")
+        if (type(target_speed_gps) not in (int, float)
+                or not math.isfinite(target_speed_gps) or target_speed_gps < 0):
+            raise ValueError("Target throughput must be finite and nonnegative")
+        if not isinstance(supply_available, dict):
+            raise ValueError("Input throughput must be a mapping")
+        for prototype_id, throughput in supply_available.items():
+            if (not isinstance(prototype_id, str) or not prototype_id
+                    or type(throughput) not in (int, float)
+                    or not math.isfinite(throughput) or throughput < 0):
+                raise ValueError("Input throughput must be finite and nonnegative")
+        if (type(energy_available) not in (int, float)
+                or not math.isfinite(energy_available) or energy_available < 0):
+            raise ValueError("Available power must be finite and nonnegative")
+        if not isinstance(surface, str) or not surface:
+            raise ValueError("Invalid planning surface")
+
         # Find recipe for target prototype
         recipe = self.recipes.get(target_prototype)
         if not recipe:
@@ -288,15 +322,21 @@ class ProductionSolver:
                 speed_multiplier=1.0,
             )
         
-        # Compute ideal speed (no restrictions)
+        # Machine capacity before input, power and surface limits.
         ideal_speed = recipe.base_speed
+        ideal_speed *= machine.speed_multiplier
         ideal_speed *= (1.0 + machine.productivity_bonus - machine.productivity_penalty)
         ideal_speed *= (1.0 + machine.beacon_bonus)
+        ideal_speed *= (1.0 - recipe.spoilage_rate)
         
         # Compute explicit speed (with all restrictions)
         explicit_speed, limiting_factors, is_energy_limited = self._compute_effective_speed(
             recipe, machine, supply_available, energy_available
         )
+        for inp in recipe.inputs:
+            if inp.surface_required and surface not in inp.surface_required:
+                limiting_factors.append(f"input-surface-{inp.prototype_id}-ineligible")
+                explicit_speed = 0.0
         
         # Check surface eligibility
         if surface not in recipe.surface_eligible:
@@ -314,7 +354,7 @@ class ProductionSolver:
         alt_machine = Machine(
             prototype_id=recipe.prototype_id,
             name=f"{recipe.prototype_id}-machine-slower",
-            speed_multiplier=0.7,
+            speed_multiplier=machine.speed_multiplier * 0.7,
             productivity_bonus=machine.productivity_bonus,
             productivity_penalty=machine.productivity_penalty,
             beacon_bonus=machine.beacon_bonus,
@@ -367,10 +407,26 @@ class ProductionSolver:
         if len(alternatives) > 0:
             recommended_index = 0  # First alternative is recommended
         
+        coverage_limits = []
+        if not recipe.inputs:
+            coverage_limits.append("unmodeled-source-throughput")
+        if recipe.fluid_ports:
+            coverage_limits.append("unsupported-fluid-constraints")
+        if recipe.byproducts:
+            coverage_limits.append("unsupported-byproduct-balance")
+        if recipe.catalysts or any(inp.is_catalyst for inp in recipe.inputs):
+            coverage_limits.append("unverified-catalyst-inventory-or-return")
+        if recipe.quality_index is not None or machine.quality_index is not None:
+            coverage_limits.append("unsupported-quality-effects")
+        if recipe.spoilage_rate:
+            coverage_limits.append("approximate-spoilage-model")
+        if len(recipe.alternatives) > 1:
+            coverage_limits.append("not-all-alternatives-evaluated")
+
         # A calculation alone never establishes verified in-game production.
         if explicit_speed <= 0:
             feasibility_status: ProductionStatus = "infeasible"
-        elif explicit_speed < target_speed_gps:
+        elif explicit_speed < target_speed_gps or coverage_limits:
             feasibility_status = "partial"
         else:
             feasibility_status = "estimated"
@@ -382,7 +438,7 @@ class ProductionSolver:
             recommended_index=recommended_index,
             utilization_ideal=utilization_ideal,
             utilization_explicit=utilization_explicit,
-            supply_limiting=limiting_factors,
+            supply_limiting=limiting_factors + coverage_limits,
             energy_limiting=is_energy_limited,
             power_margin=energy_available - recipe.energy_usage * min(target_speed_gps, ideal_speed),
             feasibility_status=feasibility_status,
@@ -487,6 +543,14 @@ class ProductionSolver:
         Returns:
             ProductionPlan with measured rate and deviation explanation
         """
+        if (not isinstance(target_prototype, str) or not target_prototype
+                or type(duration_seconds) not in (int, float)
+                or not math.isfinite(duration_seconds) or duration_seconds < 0
+                or type(initial_count) not in (int, float)
+                or not math.isfinite(initial_count) or initial_count < 0
+                or type(final_count) not in (int, float)
+                or not math.isfinite(final_count) or final_count < initial_count):
+            raise ValueError("Invalid production measurement")
         if duration_seconds <= 0:
             return ProductionPlan(
                 target_prototype=target_prototype,
@@ -528,9 +592,10 @@ class ProductionSolver:
             )
         
         # Compute ideal rate
-        ideal_rate = recipe.base_speed
+        ideal_rate = recipe.base_speed * machine.speed_multiplier
         ideal_rate *= (1.0 + machine.productivity_bonus - machine.productivity_penalty)
         ideal_rate *= (1.0 + machine.beacon_bonus)
+        ideal_rate *= (1.0 - recipe.spoilage_rate)
         
         # Compute deviation
         deviation = measured_rate - ideal_rate
@@ -827,7 +892,7 @@ def create_machine(
     Args:
         prototype_id: The machine prototype ID
         name: Machine name
-        speed_multiplier: Speed multiplier (0.0-1.0)
+        speed_multiplier: Nonnegative machine crafting-speed multiplier
         productivity_bonus: Productivity bonus from modules
         productivity_penalty: Productivity penalty from modules
         beacon_bonus: Beacon bonus

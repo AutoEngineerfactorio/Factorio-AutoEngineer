@@ -77,6 +77,53 @@ class FrameTests(unittest.TestCase):
         self.assertEqual(snapshot(dict(raw(), inventory={}))["inventory"], [])
         self.assertFalse(snapshot(dict(raw(), inventory_available=False))["inventory_available"])
 
+    def test_catalog_page_status_is_bounded_and_preserved(self):
+        status = dict(
+            page=2, page_size=16, total_count=300, total_pages=19, status="ok"
+        )
+        capabilities = dict(
+            schema=1, tick=123, surface="nauvis", game_version="2.0.77",
+            force="player", research=[], enabled_content=["base"],
+            truncated=True, recipes=[],
+        )
+        self.assertEqual(
+            snapshot(dict(raw(), catalog_status=status, capabilities=capabilities))["catalog_status"],
+            status,
+        )
+        for invalid in (
+            dict(status, page=True),
+            dict(status, page_size=33),
+            dict(status, total_count=10001),
+            dict(page=1, page_size=16, status="ok"),
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                snapshot(dict(raw(), catalog_status=invalid))
+        complete_empty = dict(
+            page=1, page_size=16, total_count=0, total_pages=0, status="ok"
+        )
+        complete_capabilities = dict(capabilities, truncated=False)
+        self.assertFalse(snapshot(dict(
+            raw(), catalog_status=complete_empty, capabilities=complete_capabilities
+        ))["capabilities"]["truncated"])
+        out_of_range = dict(
+            page=20, page_size=16, total_count=300, total_pages=19,
+            status="page_out_of_range",
+        )
+        self.assertEqual(
+            snapshot(dict(raw(), catalog_status=out_of_range))["catalog_status"]["status"],
+            "page_out_of_range",
+        )
+        with self.assertRaises(ValueError):
+            snapshot(dict(raw(), catalog_status=out_of_range, capabilities=capabilities))
+        incomplete_capabilities = dict(capabilities, truncated=False)
+        partial_frame = snapshot(dict(
+            raw(), catalog_status=status, capabilities=incomplete_capabilities
+        ))
+        from read_only_planning import view_intelligence
+
+        planning = view_intelligence(dict(status="ok", **partial_frame), received_at=100)
+        self.assertFalse(planning["planner_ready"])
+
     def test_projection_has_correct_axes_and_scale(self):
         self.assertEqual(project({"x": 10, "y": -10}, {"x": 0, "y": 0}, 400, 200, 50), (220, 80))
 
@@ -141,3 +188,23 @@ class FeedSafetyTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(PermissionError):
             await DispatchBoundary(raw_session).call_tool("autoengineer_view", {"lua": "x"})
         raw_session.call_tool.assert_not_called()
+
+    async def test_view_catalog_pages_are_bounded(self):
+        raw_session = NS(call_tool=AsyncMock())
+        boundary = DispatchBoundary(raw_session)
+        await boundary.call_tool(
+            "autoengineer_view", {"catalogPage": 2, "catalogPageSize": 32}
+        )
+        raw_session.call_tool.assert_awaited_once_with(
+            "autoengineer_view",
+            arguments={"catalogPage": 2, "catalogPageSize": 32},
+        )
+        for args in (
+            {"catalogPage": True},
+            {"catalogPage": 10001},
+            {"catalogPageSize": 33},
+            {"catalogPageSize": 1.5},
+        ):
+            with self.subTest(args=args), self.assertRaises(ValueError):
+                await boundary.call_tool("autoengineer_view", args)
+        raw_session.call_tool.assert_awaited_once()

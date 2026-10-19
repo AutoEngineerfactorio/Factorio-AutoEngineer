@@ -30,7 +30,7 @@ R01-R09 establish safe control, game-aware engineering, blueprint construction a
 | **R03 - Durable jobs** | 3-5 | Remember goals, actions, uncertainty and crash-safe restart without duplicates | Tested journal foundation; full graph later |
 | **R04 - Game capability truth** | 3 | Observe actual game version, enabled content, research, recipes, machines, surfaces and freshness | Snapshot source/offline tests published; live coverage open |
 | **R05 - Mechanics evidence ledger** | 3-5 | Record observed/planned/permitted/verified/regression evidence per mechanic and profile | Ledger source/offline tests published; broad live proof open |
-| **R06 - Production mathematics** | 3 | Solve recipes, catalysts, cycles, fluids, probability, modules, quality, power and supply; 300 gears/min fixture | **Local work in progress**; acceptance open |
+| **R06 - Production mathematics** | 3 | Solve every producible item/fluid/science/intermediate with configurable per-output throughput targets, full recipe-chain constraints and per-output measured-versus-predicted coverage; 300 gears/min is one baseline fixture | **Local work in progress**; acceptance open |
 | **R07 - Blueprint fidelity** | 3 | Safely read/write blueprint strings, books and parameters; maintain private revisioned library | **ON HOLD** until [R04-R06 pre-R07 acceptance](docs/R04_R06_PRE_R07_ACCEPTANCE.md) |
 | **R08 - Build feasibility** | 3 | Validate terrain, collision, item bills, belt/pipe/inserter/rail/wire/power connections | Planned |
 | **R09 - First self-expanding block** | 3 then 5 | From demand to approval, real materials, physical construction and measured throughput | Planned; does **not** unlock Full Autonomy |
@@ -86,9 +86,9 @@ Completed work retains its documented scope. Requirements are checked only for t
 
 ## Phase 3 — Factory gameplay
 - [x] **R01–R03: tested local foundation:** manual takeover arbitration, owned-service start/attach/health/stop, and the Windows one-folder launcher prototype. Real input, live crash checkpoints, readiness, port/duplicate checks, cancellation, source/frozen Stop, actual GUI restart/shutdown and save integrity passed. See [validation](docs/FOUNDATION_VALIDATION.md); production graphs, clean-PC onboarding and endurance remain later work.
-- [ ] **R04–R06: Helper engineering:** live profile/research/recipe/machine snapshots, per-mechanic coverage evidence, and deterministic production math; prove the 300 gears/minute fixture and compare alternatives
+- [ ] **R04–R06: Helper engineering:** live profile/research/recipe/machine snapshots, per-mechanic coverage evidence, and deterministic production math; prove generalized all-product planning (item/fluid/quality/recipe variants); use 300 gears/minute as one baseline fixture and compare alternatives
 - [ ] **R07–R09: construction pipeline:** bounded faithful blueprint/book codec, private revisions/preview, placement validation, real materials, physical completion and measured throughput; ghosts alone do not count
-- [ ] Production acceptance: multi-output/cyclic/catalyst/probabilistic flows, fluid temperatures, legal machine/module/beacon/quality effects and supply constraints; compare predicted production with 1/5/10-minute measurements
+- [ ] Production acceptance for every supported producible output (items, intermediates, fluids, science, equipment and expansion/mod content as separately qualified): multi-output/cyclic/catalyst/probabilistic flows, fluid temperatures, legal machine/module/beacon/quality effects and supply constraints; configurable item-specific targets; compare predicted versus real physical-factory 1/5/10-minute measurements per output and track untested/unavailable/unsupported cases explicitly. Begin with representative classes, never substitute a gear fixture for all-item evidence
 - [ ] Robot acceptance: distinct construction, logistic and temporary combat-robot adapters; coverage, payload/travel/charging, shortages and real costs; Stop prevents new actions without claiming to undo independent game jobs
 - [ ] Circuit/train acceptance: typed signals/ports/wires, red/green isolation, hysteresis, tick latency and power-loss recovery; safe two-station route, interrupts/refueling, failed/full destinations, deadlocks and a 20+ train fixture
 
@@ -96,7 +96,7 @@ Completed work retains its documented scope. Requirements are checked only for t
 - [x] Mode-switch and manual-takeover arbitration: revoke pending permits, cancel owned actions, reject stale approvals, re-observe before resume; emergency stopping remains available in every mode
 - [ ] Per-mechanic coverage matrix: profile/version, observe, plan, validated action or justified N/A, outcome verification, mode permission and regression evidence
 - [ ] Read-only research/recipe/machine snapshots and Helper browser, with freshness, unlocks, surface conditions and profile fingerprints
-- [ ] Helper production-target calculator: 300 gears/minute benchmark, explicit utilization margin, alternative plans, supply/transport/power limits and measured-versus-predicted rates
+- [ ] Helper production-target calculator: any supported item/fluid/quality with a configurable target, complete prerequisite recipe graph, feasible alternative plans, utilization margin, machine/transport/power/material limits, and per-output measured-versus-predicted physical-factory rates. Keep 300 gears/minute only as a benchmark example, not a product restriction
 - [ ] Safe blueprint/book/parameter codec and import/export: size/depth limits, version checks, preserved circuit/recipe/quality fields and round-trip tests
 - [ ] Private blueprint library and preview: immutable revisions, provenance/redistribution rights, checksums, material bills and missing-prototype detection; no live placement in Helper mode
 - [ ] Typed circuit compiler: signal/wire validation, hysteresis, tick latency, feedback/power-loss recovery and measured truth-table tests

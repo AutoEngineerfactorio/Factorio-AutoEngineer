@@ -12,7 +12,7 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
     {
         ["autoengineer_operation_preview"] = ["kind", "name", "count"],
         ["autoengineer_operation"] = ["kind", "name", "count", "safetyOwner", "targetX", "targetY"],
-        ["autoengineer_view"] = [], ["autoengineer_policy"] = [], ["get_player_position"] = [],
+        ["autoengineer_view"] = ["catalogPage", "catalogPageSize"], ["autoengineer_policy"] = [], ["get_player_position"] = [],
         ["scan_resources"] = ["radius"], ["get_nearby_entities"] = ["radius"],
         ["walk_to_position"] = ["targetX", "targetY", "safetyOwner", "tolerance", "timeoutSeconds"],
         ["autoengineer_status"] = ["owner"], ["autoengineer_arm"] = ["owner"], ["autoengineer_renew"] = ["owner"], ["autoengineer_stop"] = ["owner"]
@@ -23,14 +23,15 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
         version=8, max_walk=5, restricted=true,
         mode=Environment.GetEnvironmentVariable("AUTOENGINEER_BACKEND_MODE") ?? "helper" });
 
-    [McpServerTool(Name = "autoengineer_view"), Description("Read bounded single-player position and main inventory; no game actions.")]
-    public Task<string> View(CancellationToken cancellationToken = default) =>
+    [McpServerTool(Name = "autoengineer_view"), Description("Read bounded single-player state and a paged recipe/research catalog; no game actions.")]
+    public Task<string> View(int catalogPage = 1, int catalogPageSize = 16, CancellationToken cancellationToken = default) =>
         rcon.ExecuteLuaAsync("""
             local p = game.connected_players[1]
             if #game.connected_players ~= 1 or not p or not p.character then
                 rcon.print('{"status":"unavailable"}') return
             end
             local c = p.character
+            -- AUTOENGINEER_CAPABILITY_ADAPTER --
             local inv = c.get_inventory(defines.inventory.character_main)
             local items, lookup, truncated, slots = {}, {}, false, {}
             if inv then
@@ -194,8 +195,11 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
             rcon.print(helpers.table_to_json({status="ok",tick=game.tick,x=c.position.x,y=c.position.y,
                 surface=c.surface.name,control=control,overlays=overlays,inventory=items,inventory_available=inv~=nil,truncated=truncated,
                 slots=slots,capacity=inv and #inv or 0,slots_truncated=inv and #inv>200 or false,
+                catalog_status=catalog_status,capabilities=capabilities,
                 terrain={origin={x=ox,y=oy},step=1,rows=rows,palette=palette,entities=entities,partial=partial}}))
-            """, cancellationToken);
+            """.Replace("-- AUTOENGINEER_CAPABILITY_ADAPTER --",
+                RecipeResearchAdapter.BuildLua(catalogPage, catalogPageSize), StringComparison.Ordinal),
+            cancellationToken);
 
     [McpServerTool(Name = "get_player_position"), Description("Read the single connected player's position.")]
     public Task<string> Position(CancellationToken cancellationToken = default) =>

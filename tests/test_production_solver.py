@@ -1,5 +1,4 @@
-"""
-R06 Deterministic Production Solver — Test suite for production solver.
+"""R06 Deterministic Production Solver — Test suite for production solver.
 
 This test suite validates:
 1. Recipe creation with alternatives, catalysts, byproducts

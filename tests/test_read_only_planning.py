@@ -30,9 +30,10 @@ def caps():
         "schema": 1, "tick": 120, "surface": "nauvis", "game_version": "2.0.77",
         "force": "player", "research": ["automation"], "enabled_content": ["base"],
         "truncated": False,
+        "source_fingerprint": "poly31x131-v1:0123456789-9876543210",
         "recipes": [
-            {"name": "iron-gear-wheel", "enabled": True, "simple": True,
-             "crafting_time": 0.5,
+            {"name": "iron-gear-wheel", "enabled": True, "hidden": False, "simple": True,
+             "category": "crafting", "crafting_time": 0.5,
              "ingredients": [{"type": "item", "name": "iron-plate", "amount": 2}],
              "products": [{"type": "item", "name": "iron-gear-wheel", "amount": 1}]},
         ],
@@ -88,6 +89,15 @@ class ReadOnlyObservations(unittest.TestCase):
         c = view_intelligence(dict(status='ok', **snapshot(dict(frame(), capabilities=changed))), received_at=100)
         self.assertNotEqual(a["fingerprint"], c["fingerprint"])
 
+    def test_catalog_fingerprint_is_stable_across_game_ticks(self):
+        first = dict(status="ok", **snapshot(dict(frame(), capabilities=caps())))
+        later_frame = dict(frame(), tick=121)
+        later_caps = dict(caps(), tick=121)
+        later = dict(status="ok", **snapshot(dict(later_frame, capabilities=later_caps)))
+        a = view_intelligence(first, received_at=100)
+        b = view_intelligence(later, received_at=101)
+        self.assertEqual(a["fingerprint"], b["fingerprint"])
+
     def test_wrong_surface_tick_truncated_and_bad_metadata_fail_closed(self):
         cases = [
             {"tick": 119},
@@ -112,6 +122,43 @@ class ReadOnlyObservations(unittest.TestCase):
         self.assertFalse(result["planner_ready"])
         with self.assertRaises(ValueError):
             validate_capabilities(dict(caps(), recipes=[caps()["recipes"][0]] * 129), "nauvis", 120)
+
+    def test_empty_factorio_tables_and_hidden_recipes_are_safe(self):
+        p = caps()
+        p["research"] = {}
+        p["recipes"] = {}
+        parsed = validate_capabilities(p, "nauvis", 120)
+        self.assertEqual(parsed["research"], [])
+        self.assertEqual(parsed["recipes"], [])
+        self.assertFalse(view_intelligence(
+            dict(status="ok", **snapshot(dict(frame(), capabilities=p))), received_at=100
+        )["planner_ready"])
+
+        p = caps()
+        p["recipes"][0]["hidden"] = True
+        p["recipes"][0]["simple"] = False
+        parsed = validate_capabilities(p, "nauvis", 120)
+        with self.assertRaises(ValueError):
+            preview_simple_recipe(
+                parsed, "iron-gear-wheel", machine_speed=1, machine_power_kw=100,
+                input_rates={"iron-plate": 100}, power_kw=1000, target_rate=5)
+
+    def test_catalog_source_fingerprint_is_validated(self):
+        for value in ("", "poly31x131-v1:short", "sha256:" + "0" * 64):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_capabilities(dict(caps(), source_fingerprint=value), "nauvis", 120)
+
+    def test_recipe_category_is_required_and_bounded(self):
+        for category in (None, "", "bad\ncategory", 12):
+            with self.subTest(category=category), self.assertRaises(ValueError):
+                recipe = dict(caps()["recipes"][0])
+                if category is None:
+                    recipe.pop("category")
+                else:
+                    recipe["category"] = category
+                validate_capabilities(
+                    dict(caps(), recipes=[recipe]), "nauvis", 120
+                )
 
     def test_physical_preview_requires_explicit_observed_rates(self):
         data = validate_capabilities(caps(), "nauvis", 120)

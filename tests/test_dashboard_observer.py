@@ -25,10 +25,21 @@ class ObserverTests(unittest.IsolatedAsyncioTestCase):
             ("autoengineer_arm", {}),
             ("autoengineer_stop", {}),
             ("autoengineer_view", {"x": 1}),
+            ("autoengineer_view", {"catalogPage": True}),
+            ("autoengineer_view", {"catalogPageSize": 33}),
         ]:
-            with self.assertRaises(PermissionError):
+            with self.assertRaises((PermissionError, ValueError)):
                 await ViewOnly(raw).call_tool(name, args)
         raw.call_tool.assert_not_called()
+
+    async def test_observer_allows_only_bounded_catalog_pages(self):
+        raw = NS(call_tool=AsyncMock())
+        await ViewOnly(raw).call_tool(
+            "autoengineer_view", {"catalogPage": 2, "catalogPageSize": 32}
+        )
+        raw.call_tool.assert_awaited_once_with(
+            "autoengineer_view", arguments={"catalogPage": 2, "catalogPageSize": 32}
+        )
 
     async def test_idle_observer_reads_without_ai_or_lease(self):
         c = ConsoleControl()
@@ -62,6 +73,56 @@ class ObserverTests(unittest.IsolatedAsyncioTestCase):
             await observe(ViewOnly(NS(call_tool=read)), c, 0.001)
         self.assertEqual(calls, ["autoengineer_view"])
         self.assertIn('"status":"ok"', output.call_args.args[0])
+
+    async def test_observer_assembles_and_publishes_same_tick_catalog_pages(self):
+        control = ConsoleControl()
+        calls = []
+        fingerprint = "poly31x131-v1:0123456789-9876543210"
+
+        def catalog_page(number, names):
+            recipes = [{
+                "name": name, "enabled": True, "hidden": False, "simple": True,
+                "category": "crafting", "crafting_time": 1,
+                "ingredients": [{"name": "plate", "type": "item", "amount": 1}],
+                "products": [{"name": name, "type": "item", "amount": 1}],
+            } for name in names]
+            return dict(
+                status="ok", x=0, y=0, tick=120, surface="nauvis",
+                inventory=[], inventory_available=True, truncated=False,
+                catalog_status=dict(page=number, page_size=16, total_count=17,
+                                    total_pages=2, status="ok"),
+                capabilities=dict(
+                    schema=1, tick=120, surface="nauvis", game_version="2.0.77",
+                    force="player", research=[], enabled_content=["base"],
+                    truncated=False, recipes=recipes, source_fingerprint=fingerprint,
+                ),
+            )
+
+        responses = [
+            catalog_page(1, [f"recipe-{i:02d}" for i in range(16)]),
+            catalog_page(2, ["recipe-16"]),
+        ]
+
+        async def read(name, arguments=None):
+            calls.append((name, arguments))
+            raw = responses.pop(0)
+            if not responses:
+                control.stop.set()
+            return NS(
+                is_error=False,
+                content=[NS(type="text", text=json.dumps(raw))],
+            )
+
+        with patch("builtins.print") as output:
+            await observe(ViewOnly(NS(call_tool=read)), control, 0.001)
+        self.assertEqual(
+            calls,
+            [
+                ("autoengineer_view", {}),
+                ("autoengineer_view", {"catalogPage": 2, "catalogPageSize": 16}),
+            ],
+        )
+        self.assertIn('"status":"assembled"', output.call_args.args[0])
 
 
 class RasterTests(unittest.TestCase):

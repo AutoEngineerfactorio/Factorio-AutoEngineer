@@ -1,12 +1,13 @@
 """Read-only capability/ledger/planning bridge with explicit incomplete states.
 
 Uses only already received, validated display data. No MCP, RCON, gameplay,
-model call, filesystem state or generated permissions. The existing backend
-does not yet send recipe/research metadata, so it must remain unavailable.
+model call, filesystem state or generated permissions. A partial catalog page
+is observable but never certifies planner readiness.
 """
 import hashlib
 import json
 import math
+import re
 import time
 
 from capability_snapshot import assess_capability_snapshot
@@ -37,6 +38,8 @@ def bounded_name(value):
 
 
 def bounded_names(value, limit):
+    if isinstance(value, dict) and not value:
+        value = []
     if not isinstance(value, list) or len(value) > limit:
         raise ValueError("Unbounded capability name list")
     names = [bounded_name(x) for x in value]
@@ -52,7 +55,7 @@ def positive(value):
 
 
 def validate_capabilities(raw, surface, tick):
-    """Bound optional *same-tick* trusted backend metadata; no inferred recipes.
+    """Bound optional *same-tick* backend metadata; no inferred recipes.
 
     The simple flag is a separately verified one-item-product recipe contract.
     Complex probabilities, temperature, fluid, catalyst, module, quality and
@@ -69,8 +72,15 @@ def validate_capabilities(raw, surface, tick):
     research = bounded_names(raw.get("research"), 256)
     enabled_content = bounded_names(raw.get("enabled_content"), 32)
     recipes = raw.get("recipes")
-    if not isinstance(recipes, list) or len(recipes) > 128:
+    if isinstance(recipes, dict) and not recipes:
+        recipes = []
+    if not isinstance(recipes, list) or len(recipes) > 10000:
         raise ValueError("Missing or unbounded recipe catalog")
+    source_fingerprint = raw.get("source_fingerprint")
+    if (source_fingerprint is not None
+            and (not isinstance(source_fingerprint, str)
+                 or re.fullmatch(r"poly31x131-v1:[0-9]{10}-[0-9]{10}", source_fingerprint) is None)):
+        raise ValueError("Invalid source fingerprint")
     seen = set()
     parsed = []
     for rec in recipes:
@@ -78,13 +88,23 @@ def validate_capabilities(raw, surface, tick):
             raise ValueError("Invalid recipe")
         # Unknown fields may contain probabilities, temperature, quality or
         # other gameplay requirements: fail closed rather than dropping them.
-        if set(rec) != {"name", "enabled", "simple", "crafting_time", "ingredients", "products"}:
+        if set(rec) != {
+            "name", "enabled", "hidden", "simple", "category",
+            "crafting_time", "ingredients", "products",
+        }:
             raise ValueError("Unsupported/ambiguous recipe fields")
         name = bounded_name(rec.get("name"))
-        if name in seen or type(rec.get("enabled")) is not bool or type(rec.get("simple")) is not bool:
+        category = bounded_name(rec.get("category"))
+        if (name in seen or type(rec.get("enabled")) is not bool
+                or type(rec.get("hidden")) is not bool or type(rec.get("simple")) is not bool
+                or rec["simple"] and (not rec["enabled"] or rec["hidden"])):
             raise ValueError("Duplicate/ambiguous recipe")
         seen.add(name)
         items, products = rec.get("ingredients"), rec.get("products")
+        if isinstance(items, dict) and not items:
+            items = []
+        if isinstance(products, dict) and not products:
+            products = []
         if (not isinstance(items, list) or len(items) > 16
                 or not isinstance(products, list) or not 1 <= len(products) <= 8):
             raise ValueError("Unbounded ingredient/product list")
@@ -97,7 +117,8 @@ def validate_capabilities(raw, surface, tick):
                     "type": data["type"], "amount": positive(data.get("amount"))}
 
         parsed.append({
-            "name": name, "enabled": rec["enabled"], "simple": rec["simple"],
+            "name": name, "enabled": rec["enabled"], "hidden": rec["hidden"],
+            "simple": rec["simple"], "category": category,
             "crafting_time": positive(rec.get("crafting_time")),
             "ingredients": [part(v) for v in items],
             "products": [part(v) for v in products],
@@ -108,6 +129,7 @@ def validate_capabilities(raw, surface, tick):
         "research": research, "enabled_content": enabled_content,
         "truncated": raw["truncated"],
         "recipes": sorted(parsed, key=lambda x: x["name"]),
+        **({"source_fingerprint": source_fingerprint} if source_fingerprint is not None else {}),
     }
 
 
@@ -136,6 +158,9 @@ def view_intelligence(frame, *, received_at=None):
 
     raw_caps = frame.get("capabilities")
     caps = validate_capabilities(raw_caps, surface, tick) if raw_caps is not None else None
+    catalog_status = frame.get("catalog_status")
+    if catalog_status is not None and not isinstance(catalog_status, dict):
+        raise ValueError("Invalid recipe catalog assembly status")
     profile = caps["game_version"] if caps else "unverified-profile"
     evidence = [create_mechanic_entry(
         "character-reach", profile, mode="AI Helper",
@@ -159,28 +184,41 @@ def view_intelligence(frame, *, received_at=None):
 
     if caps is None:
         return {"status": "observed", "planner_ready": False,
-                "reason": "Version/research/recipe catalog not exposed by current backend",
-                "mechanics": summary, "fingerprint": None, "capabilities": None}
+                "reason": "Version/research/recipe catalog unavailable or incomplete",
+                "mechanics": summary, "fingerprint": None, "capabilities": None,
+                "catalog_status": catalog_status}
     checked = assess_capability_snapshot({
         "schema": 1, "observed_at": received_at,
         "game_version": caps["game_version"], "force": caps["force"],
         "surface": surface, "research": caps["research"],
     }, now=received_at)
     # R04 fingerprint must change with enabled content and recipes too.
+    signature_data = {key: value for key, value in caps.items() if key not in ("tick", "truncated")}
     signature = hashlib.sha256(
-        json.dumps(caps, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        json.dumps(signature_data, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     ).hexdigest()
+    catalog_complete = (
+        catalog_status is None
+        or catalog_status.get("status") == "assembled"
+        or (catalog_status.get("status") == "ok"
+            and catalog_status.get("page") == 1
+            and catalog_status.get("total_pages") <= 1
+            and catalog_status.get("total_count") == len(caps["recipes"]))
+    )
     ready = (checked["usable"] and profile_qualified(caps)
-             and not caps["truncated"] and bool(caps["recipes"]))
+             and catalog_complete and not caps["truncated"] and bool(caps["recipes"]))
     if not profile_qualified(caps):
         reason = "Profile/expansion/mod version not independently qualified"
+    elif not catalog_complete:
+        reason = "Recipe catalog pages are not fully assembled"
     elif not ready:
         reason = "Recipe catalog empty/truncated: planning disabled"
     else:
         reason = "Read-only recipe catalog ready for qualified preview"
     return {"status": checked["status"], "planner_ready": ready,
             "reason": reason,
-            "mechanics": summary, "fingerprint": signature, "capabilities": caps}
+            "mechanics": summary, "fingerprint": signature, "capabilities": caps,
+            "catalog_status": catalog_status}
 
 
 def preview_simple_recipe(capabilities, name, *, machine_speed, machine_power_kw,
@@ -195,7 +233,7 @@ def preview_simple_recipe(capabilities, name, *, machine_speed, machine_power_kw
             or not capabilities.get("recipes")):
         raise ValueError("Qualified complete read-only catalog required")
     match = next((r for r in capabilities["recipes"] if r["name"] == bounded_name(name)), None)
-    if match is None or not match["enabled"] or not match["simple"]:
+    if match is None or not match["enabled"] or match["hidden"] or not match["simple"]:
         raise ValueError("Recipe unavailable or unverified")
     all_parts = match["ingredients"] + match["products"]
     if len(match["products"]) != 1 or any(p["type"] != "item" for p in all_parts):
