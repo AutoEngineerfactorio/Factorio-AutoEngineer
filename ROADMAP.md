@@ -1,11 +1,10 @@
 # Development roadmap
 
-This is a planning roadmap, not a promise of release dates. See also the [October 19 development decisions](docs/DEVELOPMENT_DECISIONS_2026-10-19.md) for the current three-mode priority, online reference research, time-tools guardrails, Zoo Code review and pY benchmark agreement.
+This is a planning roadmap, not a promise of release dates. **The highest development priorities are (1) AI Helper + dashboard, (2) blueprint studio + reference discovery, and (3) AI Helper release acceptance.** New Semi-Autonomous and Fully Autonomous gameplay development is deferred until the [AI Helper-first H1 gate](docs/HELPER_FIRST_GATE_H1.md) is met. See also the [October 19 development decisions](docs/DEVELOPMENT_DECISIONS_2026-10-19.md) for the current three-mode priority, online reference research, time-tools guardrails, Zoo Code review and pY benchmark agreement.
 
-The target is autonomous operation with human supervision: the agent plans and
-executes routine actions within agreed limits, while the user can monitor, pause,
-override or stop it. Risky or out-of-scope decisions require approval. Per-movement
-approval remains a development safeguard until supervised autonomy is validated.
+The long-term target is autonomous operation with human supervision. **Current binding priority: finish and independently validate AI Helper and Dashboard before expanding Semi-Autonomous or Fully Autonomous gameplay.** Preserve R01–R03 Stop, takeover, bounded dispatch, durable jobs and tested supervised safety regressions; do not extend autonomy while Gate H1 is open. See [Helper-first contract and Gate H1](docs/HELPER_FIRST_GATE_H1.md).
+
+The user can monitor, pause, override or stop permitted activities. Risky or out-of-scope decisions require approval. Per-movement approval remains a development safeguard until supervised autonomy is independently validated.
 
 Complete and validate coverage of all areas of vanilla Factorio, including Space Age,
 before claiming third-party modded gameplay compatibility. Space Age is part of
@@ -43,14 +42,26 @@ saves. See `.clinerules/17-factorio-2-1-23-primary.md`.
 R07's offline codec, private library and preview belong in Phase 1B after the
 specific R04–R06 data-truth and data/math prerequisites in the pre-R07 gate pass.
 They must not be delayed by physical construction, and must never place blueprints
-in Helper mode. H1 does not unlock Semi or Full Autonomy.
+in Helper mode. H1 does not unlock Semi or Full Autonomy. The **pre-R07 data/math/safety readiness** check is still mandatory before Blueprint Studio proceeds; provisional R05 parking does not waive it.
 
 ## Complete roadmap index: R01-R20 (read this before selecting the next Zoo task)
 
 **The R milestones continue through R20. R09 is not the end of the project.**
 R01-R09 establish safe control, game-aware engineering, blueprint construction and the first supervised self-expansion. R10-R16 cover circuits, trains, robots, recovery, combat, Space Age and quality. R17-R20 cover in-game cooperation, full progression and endurance, public onboarding and then modded Factorio.
 
-**How to interpret status:** "Published / offline tested" describes source or unit-test evidence **only**, not complete gameplay acceptance. Milestones with open real-world tests remain open. The canonical detailed, version-aware acceptance criteria are in [R01-R20 planning requirements](docs/PLANNING_REQUIREMENTS.md); this table is a navigation index, not a replacement. Phases 0-6 describe delivery order and G0-G9 are separate acceptance gates.
+**How to interpret status:** "Published / offline tested" describes source or unit-test evidence **only**, not complete gameplay acceptance. Milestones with open real-world tests remain open. The canonical detailed criteria are in [R01-R20 requirements](docs/PLANNING_REQUIREMENTS.md); this table is a navigation index, not a replacement. Phases 0–6 and G0–G9 remain traceability/technical milestones, but the **Helper-first Gate H1 controls permission to expand autonomy**.
+
+### Binding delivery sequence (October 19)
+
+1. **Preserve R01–R03 foundations:** emergency Stop, takeover, bounded movement, ownership, journal, safety regressions; fix critical bugs without increasing autonomous scope.
+2. **Phase 1A — AI Helper + Dashboard (R04–R06/R05):** authenticated versioned telemetry, live recipe/research/machine catalog, all-product item/fluid/quality planning, actual power/production diagnostics, visually tested read-only dashboard, stale/error handling.
+3. **Phase 1B — Blueprint Studio (R07 + read-only R08):** after the narrow pre-R07 catalog/math/safety readiness check, implement blueprint/book/parameter codec, local editor, preview, alternatives, material/tech/prototype/geometry validation, attribution and versioned library; **never place entities in Helper mode**.
+4. **Phase 1C — Design discovery + compatibility:** approved Factorio wiki/portal, video and community blueprint research with provenance and rights; game/version/profile checks; bounded read-only mod recognition and qualified planning. Benchmark pY continuously in isolation without claiming live modded gameplay support.
+5. **Gate H1 — mandatory Helper + Dashboard acceptance:** pass security, live telemetry, deterministic planning, real factory prediction checks, blueprint fidelity, Windows visual QA, stress, shutdown/restart and stale/error cases. Require explicit human signoff; offline unit tests alone do not pass H1.
+6. **Phase 2 — Semi-Autonomous growth:** only after H1, expand approved R08–R16 gameplay construction/logistics/circuits/trains/bots/combat with verification and emergency takeover; narrow preexisting supervised safety tests remain permitted.
+7. **Phase 3 — Fully Autonomous:** remains locked until its later independent gameplay/endurance gates and explicit authorization. R20 live third-party mod adaptation remains a later scoped compatibility milestone.
+
+R milestone numbers are unchanged. This sequence supersedes older descriptions that placed all of R07–R09 or mod recognition only after autonomous construction; **read-only blueprint and mod discovery are allowed earlier once their own prerequisites are verified**.
 
 | Requirement | Delivery phase | What the AI is being taught | Evidence / next work |
 |---|---|---|---|

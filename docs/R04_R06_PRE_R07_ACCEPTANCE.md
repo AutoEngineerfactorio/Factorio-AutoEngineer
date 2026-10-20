@@ -66,4 +66,4 @@ workflow; they do not certify all-product gameplay, H1, or placement.
 | Base game future 2.x/Space Age/Quality/Elevated Rails | Explicit fail-closed tests | NOT YET QUALIFIED |
 | R07 offline codec/library/preview | Not started; Phase 1B entry criteria above remain open | WAIT until R04–R06 data/math prerequisites pass; Helper placement prohibited |
 
-All current work remains uncommitted on local main. No gameplay, save edits, GitHub publication, or model changes authorized by this document.
+This file is a planning and evidence register. Its source/patch tests do not themselves prove installation, Factorio gameplay, save updates, a public release, or Gate H1 acceptance. Publication of this document does not authorize live services, game actions, or model changes.
