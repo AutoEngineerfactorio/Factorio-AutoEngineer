@@ -562,6 +562,7 @@ class TestProductionSolverRateMeasurement(unittest.TestCase):
         
         self.assertIsNotNone(plan.measured_rate_1min)
         # measured_rate_1min is in items/minute (300 items / 60s * 60 = 300 items/min)
+        assert plan.measured_rate_1min is not None
         self.assertAlmostEqual(plan.measured_rate_1min, 300.0, places=1)
     
     def test_measure_production_rate_zero_duration(self) -> None:
@@ -611,6 +612,7 @@ class TestProductionSolverRateMeasurement(unittest.TestCase):
         
         self.assertIsNotNone(plan.deviation_explanation)
         # Check for moderate deviation message
+        assert plan.deviation_explanation is not None
         self.assertIn("deviation", plan.deviation_explanation.lower())
 
 
@@ -986,6 +988,7 @@ class TestR06AcceptanceCriteria(unittest.TestCase):
         
         self.assertIsNotNone(plan.measured_rate_1min)
         # measured_rate_1min is items per minute, so 300 items / 1 minute = 300.0
+        assert plan.measured_rate_1min is not None
         self.assertAlmostEqual(plan.measured_rate_1min, 300.0, places=1)
 
 
@@ -1122,9 +1125,11 @@ class TestR06IndependentRegression(unittest.TestCase):
     def test_supplied_counts_keep_units_consistent(self):
         p = self.solver.measure_production_rate("gears", 60, 0, 300)
         self.assertAlmostEqual(p.target_speed_gps, 5)
+        assert p.measured_rate_1min is not None
         self.assertAlmostEqual(p.measured_rate_1min, 300)
         p = self.solver.measure_production_rate("gears", 300, 0, 1500)
         self.assertAlmostEqual(p.target_speed_gps, 5)
+        assert p.measured_rate_5min is not None
         self.assertAlmostEqual(p.measured_rate_5min, 300)
 
     def test_nonfinite_power_and_supply_are_rejected(self):

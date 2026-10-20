@@ -7,6 +7,7 @@ import unittest
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 from types import SimpleNamespace as NS
+from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
@@ -61,7 +62,7 @@ class PolicyTests(unittest.IsolatedAsyncioTestCase):
             ModePolicy(FULL)
         with self.assertRaises(ValueError):
             ModePolicy("future-mode")
-        policy = ModePolicy()
+        policy = cast(Any, ModePolicy())  # Intentionally test forbidden mutation.
         with self.assertRaises(FrozenInstanceError):
             policy.mode = SEMI
         with patch.dict(os.environ, {}, clear=True):
@@ -129,7 +130,7 @@ class PolicyTests(unittest.IsolatedAsyncioTestCase):
 
 class DashboardModeTests(unittest.TestCase):
     def view(self):
-        v = Dashboard.__new__(Dashboard)
+        v: Any = Dashboard.__new__(Dashboard)
         v.current_mode = SEMI
         v.mode = Mock()
         v.mode.get.return_value = "AI Helper"

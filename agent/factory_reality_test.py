@@ -27,7 +27,9 @@ class TraceError(ValueError):
 
 
 def finite_nonnegative(value: object) -> float:
-    if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+    if not isinstance(value, (int, float)) or type(value) not in (int, float):
+        raise TraceError("A flow counter or measurement is invalid")
+    if not math.isfinite(value) or value < 0:
         raise TraceError("A flow counter or measurement is invalid")
     return float(value)
 

@@ -1,4 +1,4 @@
-# AutoEngineer: Cline GitHub publication target
+# AutoEngineer: Zoo Code GitHub publication target
 
 The only approved publication destination for this repository is the EXISTING GitHub repository:
 - Remote: origin

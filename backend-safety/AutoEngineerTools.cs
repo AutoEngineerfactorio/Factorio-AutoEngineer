@@ -195,6 +195,7 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
             rcon.print(helpers.table_to_json({status="ok",tick=game.tick,x=c.position.x,y=c.position.y,
                 surface=c.surface.name,control=control,overlays=overlays,inventory=items,inventory_available=inv~=nil,truncated=truncated,
                 slots=slots,capacity=inv and #inv or 0,slots_truncated=inv and #inv>200 or false,
+                telemetry=telemetry,
                 catalog_status=catalog_status,capabilities=capabilities,
                 terrain={origin={x=ox,y=oy},step=1,rows=rows,palette=palette,entities=entities,partial=partial}}))
             """.Replace("-- AUTOENGINEER_CAPABILITY_ADAPTER --",

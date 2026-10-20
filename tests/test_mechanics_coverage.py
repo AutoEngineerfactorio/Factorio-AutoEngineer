@@ -11,6 +11,7 @@ This test suite validates:
 """
 
 import unittest
+from typing import Any, cast
 
 from agent.mechanics_coverage import (
     MECHANIC_CATEGORIES,
@@ -516,7 +517,7 @@ class TestAddMode(unittest.TestCase):
             add_mode(
                 ledger,
                 category="character-reach",
-                mode="Invalid Mode",
+                mode=cast(Any, "Invalid Mode"),
             )
         
         self.assertIn("Invalid mode", str(context.exception))
@@ -726,7 +727,7 @@ class TestModeEnum(unittest.TestCase):
             add_mode(
                 create_mechanics_ledger(profile_version="v1"),
                 category="character-reach",
-                mode="Invalid Mode",
+                mode=cast(Any, "Invalid Mode"),
             )
 
 

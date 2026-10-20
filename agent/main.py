@@ -2,7 +2,7 @@ import json
 import re
 import urllib.request
 
-from autoengineer_config import get_settings
+from .autoengineer_config import get_settings
 
 API = get_settings()["llm_api_url"]
 ALLOWED = {"walk", "mine", "craft", "observe", "wait"}

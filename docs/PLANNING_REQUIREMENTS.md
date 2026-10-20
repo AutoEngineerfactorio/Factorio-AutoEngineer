@@ -8,6 +8,42 @@ The full archive contributes product requirements, engineering contracts, resear
 
 Use legitimate research, inventory, crafting, build reach, energy, force, surface and charted knowledge. Never expose arbitrary Lua/RCON, shell execution, spawning, teleportation or self-modifying permissions to the agent. Explicitly distinguish controlled test fixtures from earned gameplay evidence. Stop must cancel owned character actions and new dispatch; independent bots, trains, projectiles and world simulation need honest capability-specific handling.
 
+## Helper-first delivery sequencing
+
+The October 19, 2026 amendment changes delivery priority, not R-number traceability:
+
+1. **Foundation: preserve and harden (R01–R03).** Keep startup, service ownership,
+   Stop/takeover, bounded dispatch, durable jobs and rollback reliable; do not expand
+   gameplay autonomy.
+2. **Phase 1A: AI Helper + Dashboard (R04–R06 and R05 telemetry).** Deliver reliable
+   read-only observation, recipe/research browsing, generalized item/fluid planning,
+   power/production telemetry, bottleneck diagnosis and explained recommendations.
+   Helper must make zero gameplay writes.
+3. **Phase 1B: Blueprint Studio (R07 and read-only/preflight R08).** Deliver bounded,
+   version-aware authoring/import/export/revision/preview and footprint, recipe,
+   wiring, technology, module and material checks without placement.
+4. **Phase 1C: Discovery and Compatibility.** Research authorized external references
+   with creator, license, source and version provenance; validate compatibility and
+   mark unsupported profiles explicitly.
+5. **Gate H1: Helper + Dashboard acceptance.** Require deterministic tests, live-data
+   evidence, Windows UI review, security/failure-path tests, stress/restart evidence
+   and user sign-off for declared supported profiles before gameplay expansion.
+6. **Phase 2: Semi-Autonomous.** Only after H1, develop gameplay portions of R08–R16
+   with existing approval, Stop and takeover controls.
+7. **Phase 3: Fully Autonomous.** R09–R20 autonomy stays behind independent safety,
+   endurance and explicit approval gates; H1 alone never unlocks it.
+
+Non-gameplay R07 work may start after the specific R04–R06 data-truth and data/math
+prerequisites recorded in the pre-R07 gate pass. It must precede physical construction
+work and cannot grant Helper any placement capability.
+
+H1 acceptance must separately demonstrate source/freshness/profile truth; generic
+planning on representative item, intermediate, science, fluid, quality and cycle
+cases; predicted-versus-observed rates on authorized physical fixtures; blueprint
+fidelity and hostile-input rejection; visual UI correctness; safe behavior under
+stale/partial/failed telemetry and restart; measured performance/endurance; and a
+reviewable evidence record. Offline tests are necessary but are not live acceptance.
+
 Old archive status notes are snapshots. They do not undo published MIT/attribution, safety work, memory, navigation, bounded map/inventory, starter operations, mode enforcement or movement fixes. Compatibility tables and dated release claims are research leads, not certification. Historical kickoff prompts do not authorize code changes, installs, game actions, publishing or automations.
 
 ## Delivery and acceptance requirements

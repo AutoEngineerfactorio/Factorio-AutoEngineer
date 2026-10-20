@@ -164,12 +164,15 @@ class Launcher:
                     "Setup is incomplete. Choose a valid isolated test profile; see launcher setup instructions."
                 )
                 return
-        self.supervisor.cancel.clear()
+        supervisor = self.supervisor
+        if supervisor is None:
+            return
+        supervisor.cancel.clear()
         self.start_button.configure(state="disabled")
 
         def work():
             try:
-                self.supervisor.start_all()
+                supervisor.start_all()
             except Exception:
                 pass
             finally:
@@ -178,14 +181,15 @@ class Launcher:
         threading.Thread(target=work, daemon=True).start()
 
     def emergency_stop(self):
-        if self.supervisor is None:
+        supervisor = self.supervisor
+        if supervisor is None:
             return
-        self.supervisor.cancel.set()
+        supervisor.cancel.set()
         self.note.set("Stopping AI; the test game stays open...")
 
         def work():
             try:
-                self.supervisor.request_dashboard_stop()
+                supervisor.request_dashboard_stop()
                 self.events.put(
                     ("halted", "AI/dashboard stopped. Test game and model remain open.")
                 )
@@ -206,13 +210,16 @@ class Launcher:
             "Stop the AI/dashboard first, save and close any test server started here, and close the client/model started here? Pre-existing services are left running.",
         ):
             return
+        supervisor = self.supervisor
+        if supervisor is None:
+            return
         self.start_button.configure(state="disabled")
         self.note.set("Stopping safely...")
 
         def work():
             try:
-                self.supervisor.stop_owned(include_game=True)
-                self.supervisor.release()
+                supervisor.stop_owned(include_game=True)
+                supervisor.release()
                 self.events.put(
                     (
                         "stopped",
@@ -243,9 +250,12 @@ class Launcher:
             self.last_health = time.monotonic()
             self.health_busy = True
 
+            supervisor = self.supervisor
+
             def health():
                 try:
-                    self.supervisor.refresh_health()
+                    if supervisor is not None:
+                        supervisor.refresh_health()
                 finally:
                     self.health_busy = False
 

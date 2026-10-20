@@ -739,11 +739,11 @@ class ProductionSolver:
 def create_production_plan(
     target_prototype: str,
     target_speed_gps: float,
-    alternatives: list[ProductionPlan] = None,
+    alternatives: list[ProductionPlan] | None = None,
     recommended_index: int = 0,
     utilization_ideal: float = 0.0,
     utilization_explicit: float = 0.0,
-    supply_limiting: list[str] = None,
+    supply_limiting: list[str] | None = None,
     energy_limiting: bool = False,
     power_margin: float = 0.0,
     measured_rate_1min: Optional[float] = None,
@@ -817,13 +817,13 @@ def create_recipe(
     prototype_id: str,
     base_speed: float,
     energy_usage: float,
-    alternatives: list[Recipe] = None,
-    catalysts: list[str] = None,
-    byproducts: list[dict[str, Any]] = None,
+    alternatives: list[Recipe] | None = None,
+    catalysts: list[str] | None = None,
+    byproducts: list[dict[str, Any]] | None = None,
     quality_index: Optional[int] = None,
-    surface_eligible: list[str] = None,
+    surface_eligible: list[str] | None = None,
     spoilage_rate: float = 0.0,
-    inputs: list[dict[str, Any] | MaterialInput] = None,
+    inputs: list[dict[str, Any] | MaterialInput] | None = None,
 ) -> Recipe:
     """
     Create a recipe with all fields.

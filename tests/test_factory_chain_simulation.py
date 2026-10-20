@@ -3,6 +3,7 @@ import math
 import sys
 import unittest
 from pathlib import Path
+from typing import Any, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
 from factory_chain_simulation import constrained_second, make_constrained_trace
@@ -60,7 +61,8 @@ class ConstrainedFactory(unittest.TestCase):
                      {"iron_furnaces": 10000},
                      {"iron_transport_capacity": math.inf}):
             with self.subTest(args=args), self.assertRaises(ValueError):
-                constrained_second(**args)
+                # Invalid types are intentionally supplied to the runtime validator.
+                cast(Any, constrained_second)(**args)
 
     def test_ten_minute_trace_is_recipe_balance_constrained(self):
         trace = make_constrained_trace()

@@ -6,6 +6,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace as NS
+from typing import Any
 from unittest.mock import AsyncMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
@@ -53,7 +54,7 @@ class BoundsTests(unittest.TestCase):
     def test_partial_or_invalid_inventory_not_verified(self):
         with self.assertRaises(ValueError):
             inventory(dict(view(), truncated=True), "iron-ore")
-        invalid = view()
+        invalid: dict[str, Any] = view()
         invalid["inventory"][0]["count"] = True
         with self.assertRaises(ValueError):
             inventory(invalid, "iron-plate")

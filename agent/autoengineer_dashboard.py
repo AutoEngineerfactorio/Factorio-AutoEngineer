@@ -23,8 +23,10 @@ from dashboard_view import LiveView
 from factorio_theme import AMBER, INSET, TEXT, apply_theme
 from mode_policy import FULL, HELPER, LABELS, SEMI
 from navigation_objective import Objective
+from planning_view import RecipeResearchView
 from read_only_planning import ReadOnlyPlanningSession
 from session_safety import PROMPT
+from telemetry_view import TelemetryView
 from verified_operations import validate_operation
 
 AGENT = Path(__file__).resolve().parent / "supervised_agent.py"
@@ -42,7 +44,7 @@ class Dashboard:
         self.current_mode = HELPER
         self.mode = tk.StringVar(value="AI Helper")
         self.mode_note = tk.StringVar(
-            value="AI Helper: live observation only. Recipe and blueprint planning are future work."
+            value="AI Helper: read-only observation and catalog browsing; no gameplay writes."
         )
         self.proc = None
         self.observer = None
@@ -114,6 +116,10 @@ class Dashboard:
         workspace.add(tabs, weight=5)
         self.live_view = LiveView(tabs)
         tabs.add(self.live_view, text="SURFACE & INVENTORY")
+        self.planning_view = RecipeResearchView(tabs)
+        tabs.add(self.planning_view, text="RECIPES & RESEARCH")
+        self.telemetry_view = TelemetryView(tabs)
+        tabs.add(self.telemetry_view, text="PRODUCTION & POWER")
         activity = ttk.Frame(tabs)
         tabs.add(activity, text="ACTIVITY LOG")
         self.log = scrolledtext.ScrolledText(
@@ -285,7 +291,7 @@ class Dashboard:
         self.set_approval(False)
         if requested == HELPER:
             self.mode_note.set(
-                "AI Helper: live observation only. Recipe and blueprint planning are future work."
+                "AI Helper: read-only observation and catalog browsing; no gameplay writes."
             )
             if self.proc is not None:
                 self.stop()
@@ -298,6 +304,8 @@ class Dashboard:
     def display_frame(self, value):
         try:
             frame = parse_frame(value)
+            if frame is None:
+                raise ValueError("Not a display frame")
             if frame["status"] == "ok":
                 control = frame.get("control", {})
                 current = (frame["surface"], control.get("generation"))
@@ -318,14 +326,25 @@ class Dashboard:
                 frame.update(getattr(self, "display_markers", {}))
                 self.position.set(f"{frame['position']['x']:.2f}, {frame['position']['y']:.2f}")
             intelligence = self.planning_session.observe(frame)
+            self.planning_view.update_intelligence(intelligence)
             if intelligence["planner_ready"]:
-                self.planner_note.set("R04-R06: read-only catalog received; calculations are estimates")
+                self.planner_note.set(
+                    "R04-R06: qualified catalog observed; production estimates are not measured"
+                )
             else:
-                self.planner_note.set("R04-R06: " + intelligence["reason"])
+                self.planner_note.set("R04-R06: " + str(intelligence["reason"]))
             self.live_view.update_frame(frame)
+            self.telemetry_view.update_frame(frame)
         except (ValueError, TypeError, KeyError, AttributeError):
+            self.planning_view.update_intelligence({
+                "status": "unavailable",
+                "planner_ready": False,
+                "reason": "Observation unavailable; planning disabled",
+                "capabilities": None,
+            })
             self.planner_note.set("R04-R06: observation unavailable; planning disabled")
             self.live_view.update_frame({"status": "unavailable"})
+            self.telemetry_view.update_frame({"status": "unavailable"})
 
     def start_observer(self):
         if self.closing or self.observer is not None:
@@ -358,8 +377,9 @@ class Dashboard:
         p = self.observer
         if p and p.poll() is None:
             try:
-                p.stdin.write("q\n")
-                p.stdin.flush()
+                if p.stdin is not None:
+                    p.stdin.write("q\n")
+                    p.stdin.flush()
             except (OSError, ValueError):
                 pass
             # Observer owns no gameplay; give its MCP transport time to close.
@@ -538,7 +558,7 @@ class Dashboard:
                         # Agent frames add objective/proposal markers; observer owns live world data.
                         try:
                             f = parse_frame(value)
-                            if f.get("status") == "ok":
+                            if f is not None and f.get("status") == "ok":
                                 self.display_markers = {
                                     k: f[k]
                                     for k in (
@@ -608,6 +628,7 @@ class Dashboard:
         if (
             not live.available
             or live.received is None
+            or live.last is None
             or live.received <= self.takeover_started
             or time.monotonic() - live.received > 3
         ):
@@ -779,6 +800,7 @@ class Dashboard:
             or not self.waiting_for_approval
             or not p
             or p.poll() is not None
+            or p.stdin is None
         ):
             return
         self.set_approval(False)
@@ -801,8 +823,9 @@ class Dashboard:
         self.status.set("Stopping")
         if p.stdin and not p.stdin.closed:
             try:
-                p.stdin.write("q\n")
-                p.stdin.flush()
+                if p.stdin is not None:
+                    p.stdin.write("q\n")
+                    p.stdin.flush()
             except (OSError, ValueError):
                 pass
         # The controller's independent reader consumes q during any phase.

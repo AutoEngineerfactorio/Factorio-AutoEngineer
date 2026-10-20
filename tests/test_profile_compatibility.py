@@ -17,10 +17,26 @@ class CompatibilityGates(unittest.TestCase):
             received_at=10.0,
         )
 
-    def test_pinned_base_preview_is_qualified_but_not_game_verified(self):
-        result = self.observed(caps())
-        self.assertTrue(result["planner_ready"])
-        self.assertEqual(result["mechanics"]["dimension_counts"]["verified"], 0)
+    def test_exact_20_and_21_targets_are_qualified_but_not_live_verified(self):
+        for version in ("2.0.77", "2.1.22"):
+            with self.subTest(version=version):
+                result = self.observed(dict(caps(), game_version=version))
+                self.assertTrue(result["planner_ready"])
+                self.assertEqual(result["mechanics"]["dimension_counts"]["verified"], 0)
+                preview = preview_simple_recipe(
+                    result["capabilities"], "iron-gear-wheel",
+                    machine_speed=.75, machine_power_kw=150,
+                    input_rates={"iron-plate": 10},
+                    power_kw=1000, target_rate=1,
+                )
+                self.assertEqual(preview.feasibility_status, "estimated")
+
+    def test_other_patch_versions_remain_unqualified(self):
+        for version in ("2.0.76", "2.1.21", "2.1.23", "2.2.0"):
+            with self.subTest(version=version):
+                result = self.observed(dict(caps(), game_version=version))
+                self.assertFalse(result["planner_ready"])
+                self.assertIn("not independently qualified", result["reason"])
 
     def test_space_age_quality_and_elevated_rails_remain_evidence_gated(self):
         for addition in ("space-age", "quality", "elevated-rails"):
@@ -39,7 +55,7 @@ class CompatibilityGates(unittest.TestCase):
                     )
 
     def test_future_version_and_third_party_mod_remain_unqualified(self):
-        for change in ({"game_version": "2.1.22"},
+        for change in ({"game_version": "2.1.23"},
                        {"enabled_content": ["base", "space-exploration"]}):
             result = self.observed(dict(caps(), **change))
             self.assertFalse(result["planner_ready"])

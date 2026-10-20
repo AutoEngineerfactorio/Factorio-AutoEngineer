@@ -54,3 +54,11 @@ work/
 # Isolated runtime state and structured events
 .local/
 .ruff_cache/
+
+# Local workflow backup files
+*.pre-optional-review.bak
+*.pre-workflow-fix.bak
+*.pre-status-align.bak
+
+# Local Pillow test environment
+.venv-visual/

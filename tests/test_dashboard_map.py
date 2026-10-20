@@ -2,13 +2,14 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
 from dashboard_feed import PREFIX, DashboardFeed, parse_frame, snapshot
 from dashboard_view import project, terrain_color
 
 
-def frame():
+def frame() -> dict[str, Any]:
     return dict(
         status="ok",
         x=0,
@@ -36,6 +37,7 @@ class MapTests(unittest.TestCase):
         d = snapshot(frame())
         d.update(DashboardFeed().features)
         f = parse_frame(PREFIX + json.dumps(dict(schema=1, status="ok", **d)))
+        assert f is not None
         self.assertEqual(f["slots"][0], dict(slot=3, name="iron-plate", quality="rare", count=8))
         self.assertEqual(f["capacity"], 80)
         self.assertEqual(f["terrain"]["tiles"][0]["name"], "water")

@@ -14,8 +14,9 @@ from factory_reality_test import TICKS_PER_SECOND
 
 
 def _rate(value: object, name: str, *, allow_zero: bool = False) -> float:
-    if (type(value) not in (int, float) or not math.isfinite(value)
-            or value < 0 or (not allow_zero and value == 0)):
+    if not isinstance(value, (int, float)) or type(value) not in (int, float):
+        raise ValueError(f"Invalid finite {name}")
+    if not math.isfinite(value) or value < 0 or (not allow_zero and value == 0):
         raise ValueError(f"Invalid finite {name}")
     return float(value)
 
@@ -63,7 +64,7 @@ def constrained_second(*, iron_ore_per_second=13.0, copper_ore_per_second=4.5,
         "cable_assemblers": (cable_assemblers * .75 / .5 * 2) / target_cable,
         "power_fraction": power,
     }
-    bottleneck = min(target_capacities, key=target_capacities.get)
+    bottleneck = min(target_capacities, key=lambda key: target_capacities[key])
     fraction = min(1.0, target_capacities[bottleneck])
     products = {
         "iron-plate": target_iron * fraction,

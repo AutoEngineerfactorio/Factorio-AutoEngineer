@@ -2,6 +2,7 @@ import copy
 import sys
 import unittest
 from pathlib import Path
+from typing import Any, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
 from dashboard_feed import overlay_details
@@ -9,14 +10,14 @@ from dashboard_feed import overlay_details
 
 class OverlayTests(unittest.TestCase):
     def setUp(self):
-        self.o = dict(schema=1, player_name="Engineer", available={}, partial={})
+        self.o: dict[str, Any] = dict(schema=1, player_name="Engineer", available={}, partial={})
         for key in ("pollution", "electric", "logistics", "turrets", "stations", "tags"):
             self.o[key] = []
             self.o["available"][key] = True
             self.o["partial"][key] = False
 
-    def check(self, o=None):
-        return overlay_details({"overlays": o or self.o}, {"x": 0, "y": 0})["overlays"]
+    def check(self, o: dict[str, Any] | None = None) -> dict[str, Any]:
+        return cast(dict[str, Any], overlay_details({"overlays": o or self.o}, {"x": 0, "y": 0})["overlays"])
 
     def test_all_layers_and_empty_lua_tables(self):
         for key in self.o["available"]:

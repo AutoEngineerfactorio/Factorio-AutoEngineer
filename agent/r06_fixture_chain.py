@@ -40,7 +40,7 @@ def machine_stage(demand_per_second, *, cycle_seconds, crafting_speed,
     }
 
 
-def base_gears_chain(gears_per_minute=300):
+def base_gears_chain(gears_per_minute: float = 300):
     """Conservative 2-stage gears and smelting fixture; no world simulation.
 
     Recipe: gear 2 iron plates -> 1 gear in 0.5s.

@@ -24,6 +24,6 @@ Gameplay leases require direct character control outside vehicles. Remote view r
 
 ## Foundation update
 
-Install the input-only helper from `factorio-mod/autoengineer-input_0.1.0` into the isolated profile's mods directory and enable it before restarting Factorio. Policy 8 refuses gameplay leases without this helper. It observes linked game controls without consuming them or recording key history. It changes no recipes or progression. Never install into a main profile as part of a test.
+Install the input-only helper from `factorio-mod/autoengineer-input_2.1.22` into the isolated profile's mods directory and enable it before restarting Factorio. Policy 8 refuses gameplay leases without this helper. It observes linked game controls without consuming them or recording key history. It changes no recipes or progression. Never install into a main profile as part of a test.
 
 Take Control revokes approvals and owned activity. Resume requires confirmed stopping, a fresh observation, and an explicit new session. Review interrupted work against the live position and inventory before acknowledging uncertainty. Reviews do not certify completion and never replay an action. Private SQLite checkpoints remain under the launcher runtime directory; do not upload them. See [foundation validation](FOUNDATION_VALIDATION.md).

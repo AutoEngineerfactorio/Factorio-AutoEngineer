@@ -267,6 +267,9 @@ class LiveView(ttk.Frame):
     def inventory(self):
         self.items.delete("all")
         self.slot_hits = []
+        if self.last is None:
+            self.inventory_status.set("Main inventory unavailable")
+            return
         if not self.last["inventory_available"]:
             self.inventory_status.set("Main inventory unavailable")
             return
@@ -367,7 +370,7 @@ class LiveView(ttk.Frame):
         self.draw()
 
     def freshness(self, running):
-        if self.last is None:
+        if self.last is None or self.received is None:
             return
         age = time.monotonic() - self.received
         state = (

@@ -78,6 +78,7 @@ class ConfigurationTests(unittest.TestCase):
         ):
             params = config.mcp_parameters()
         self.assertEqual(params.args, [str(dll.resolve())])
+        assert params.env is not None
         self.assertEqual(params.env["FACTORIO_RCON_PASSWORD"], "fake-test-value")
         self.assertEqual(params.env["FACTORIO_RCON_PORT"], "28000")
 

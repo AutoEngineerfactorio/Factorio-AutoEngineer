@@ -15,7 +15,7 @@ from factory_reality_test import (
 )
 
 
-def sample(tick, output, *, consumed=None, power=1.0):
+def sample(tick, output, *, consumed=None, power: float | None = 1.0):
     return {"tick": tick, "produced": output, "consumed": consumed or [],
             "power_satisfaction": power}
 

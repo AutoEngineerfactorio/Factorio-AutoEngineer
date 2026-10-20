@@ -107,7 +107,9 @@ def validate(decision, position):
     x = decision.get("x")
     y = decision.get("y")
 
-    if any(type(v) not in (float, int) or not math.isfinite(v) for v in (x, y)):
+    if (not isinstance(x, (float, int)) or type(x) not in (float, int)
+            or not isinstance(y, (float, int)) or type(y) not in (float, int)
+            or not math.isfinite(x) or not math.isfinite(y)):
         raise ValueError("Invalid coordinates")
 
     distance = math.dist((position["x"], position["y"]), (x, y))
@@ -231,6 +233,10 @@ async def run_cycles(session, control, owner, feed=None, policy=None):
             break
 
         arguments = validate(decision, latest)
+        if arguments is None:
+            session.cancel_proposal()
+            print("Revalidated proposal no longer requests movement; stopping.")
+            break
         if memory is not None and memory.blocked(decision):
             print("Previously failed destination rejected; no movement dispatched.")
             continue

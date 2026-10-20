@@ -7,6 +7,7 @@ import threading
 import unittest
 import zipfile
 from pathlib import Path
+from typing import Any
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
@@ -61,7 +62,7 @@ class LauncherTests(unittest.TestCase):
         settings.write_text(json.dumps({"visibility": {"public": False, "lan": False}}))
         secret = self.r / "secret.json"
         secret.write_text(json.dumps({"rcon_password": "fixture-only"}))
-        self.d = dict(
+        self.d: dict[str, Any] = dict(
             llama_exe=str(exe),
             model_file=str(exe),
             factorio_exe=str(exe),

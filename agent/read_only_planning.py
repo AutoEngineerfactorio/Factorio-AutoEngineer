@@ -9,6 +9,7 @@ import json
 import math
 import re
 import time
+from typing import Any
 
 from capability_snapshot import assess_capability_snapshot
 from mechanics_coverage import (
@@ -16,16 +17,17 @@ from mechanics_coverage import (
     create_mechanic_entry,
     create_mechanics_ledger,
 )
-from production_solver import ProductionSolver, create_machine, create_recipe
+from production_solver import MaterialInput, ProductionSolver, create_machine, create_recipe
 
-# The only tested live foundation profile. New game/expansion revisions require
-# independent API/recipe/machine acceptance, not automatic qualification.
-QUALIFIED_GAME_VERSION = "2.0.77"
+# Exact source-target versions. Qualification here enables read-only catalog
+# preview only; it is not evidence that a runtime/backend combination passed
+# live acceptance. Other patch versions require a separate compatibility check.
+QUALIFIED_GAME_VERSIONS = frozenset({"2.0.77", "2.1.22"})
 QUALIFIED_CONTENT = frozenset({"base", "core", "autoengineer-input"})
 
 
 def profile_qualified(caps):
-    return (caps.get("game_version") == QUALIFIED_GAME_VERSION
+    return (caps.get("game_version") in QUALIFIED_GAME_VERSIONS
             and "base" in caps.get("enabled_content", [])
             and set(caps["enabled_content"]).issubset(QUALIFIED_CONTENT))
 
@@ -88,10 +90,11 @@ def validate_capabilities(raw, surface, tick):
             raise ValueError("Invalid recipe")
         # Unknown fields may contain probabilities, temperature, quality or
         # other gameplay requirements: fail closed rather than dropping them.
-        if set(rec) != {
+        base_fields = {
             "name", "enabled", "hidden", "simple", "category",
             "crafting_time", "ingredients", "products",
-        }:
+        }
+        if set(rec) not in (base_fields, base_fields | {"unlock_technologies"}):
             raise ValueError("Unsupported/ambiguous recipe fields")
         name = bounded_name(rec.get("name"))
         category = bounded_name(rec.get("category"))
@@ -116,12 +119,41 @@ def validate_capabilities(raw, surface, tick):
             return {"name": bounded_name(data.get("name")),
                     "type": data["type"], "amount": positive(data.get("amount"))}
 
+        unlock_technologies = None
+        if "unlock_technologies" in rec:
+            raw_unlocks = rec["unlock_technologies"]
+            if not isinstance(raw_unlocks, list) or len(raw_unlocks) > 8:
+                raise ValueError("Invalid recipe technology unlock list")
+            unlock_technologies = []
+            seen_unlocks = set()
+            for unlock in raw_unlocks:
+                if (not isinstance(unlock, dict)
+                        or set(unlock) != {"name", "researched", "enabled"}
+                        or type(unlock.get("researched")) is not bool
+                        or type(unlock.get("enabled")) is not bool):
+                    raise ValueError("Invalid recipe technology unlock")
+                unlock_name = bounded_name(unlock["name"])
+                if unlock_name in seen_unlocks:
+                    raise ValueError("Duplicate recipe technology unlock")
+                seen_unlocks.add(unlock_name)
+                unlock_technologies.append({
+                    "name": unlock_name,
+                    "researched": unlock["researched"],
+                    "enabled": unlock["enabled"],
+                })
+            if unlock_technologies != sorted(
+                unlock_technologies, key=lambda item: item["name"]
+            ):
+                raise ValueError("Recipe technology unlocks are not deterministically ordered")
+
         parsed.append({
             "name": name, "enabled": rec["enabled"], "hidden": rec["hidden"],
             "simple": rec["simple"], "category": category,
             "crafting_time": positive(rec.get("crafting_time")),
             "ingredients": [part(v) for v in items],
             "products": [part(v) for v in products],
+            **({"unlock_technologies": unlock_technologies}
+               if unlock_technologies is not None else {}),
         })
     return {
         "schema": 1, "tick": tick, "surface": surface,
@@ -197,12 +229,13 @@ def view_intelligence(frame, *, received_at=None):
     signature = hashlib.sha256(
         json.dumps(signature_data, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
     ).hexdigest()
+    total_pages = catalog_status.get("total_pages") if catalog_status is not None else None
     catalog_complete = (
         catalog_status is None
         or catalog_status.get("status") == "assembled"
         or (catalog_status.get("status") == "ok"
             and catalog_status.get("page") == 1
-            and catalog_status.get("total_pages") <= 1
+            and isinstance(total_pages, int) and total_pages <= 1
             and catalog_status.get("total_count") == len(caps["recipes"]))
     )
     ready = (checked["usable"] and profile_qualified(caps)
@@ -245,7 +278,7 @@ def preview_simple_recipe(capabilities, name, *, machine_speed, machine_power_kw
     demand = positive(target_rate)
     product = match["products"][0]
     output_rate = crafting_speed * product["amount"] / match["crafting_time"]
-    inputs = [{"prototype_id": item["name"],
+    inputs: list[dict[str, Any] | MaterialInput] = [{"prototype_id": item["name"],
                "count": item["amount"] / product["amount"]}
               for item in match["ingredients"]]
     planner = ProductionSolver(profile_version=capabilities["game_version"])
@@ -263,7 +296,7 @@ def preview_simple_recipe(capabilities, name, *, machine_speed, machine_power_kw
 class ReadOnlyPlanningSession:
     """Bounded freshness gate across successive read-only display frames."""
 
-    def __init__(self, max_still_seconds=5):
+    def __init__(self, max_still_seconds: float = 5):
         self.max_still_seconds = positive(max_still_seconds)
         self._surface = None
         self._tick = None
@@ -285,10 +318,13 @@ class ReadOnlyPlanningSession:
         if self._surface != surface or tick != self._tick:
             self._surface, self._tick = surface, tick
             self._progressed_at = now
-        if now < self._progressed_at:
+        progressed_at = self._progressed_at
+        if progressed_at is None:
+            raise ValueError("Missing observation progress timestamp")
+        if now < progressed_at:
             raise ValueError("Observation clock regressed")
         result = view_intelligence(frame, received_at=now)
-        if now - self._progressed_at > self.max_still_seconds:
+        if now - progressed_at > self.max_still_seconds:
             result = dict(result, status="stale", planner_ready=False,
                           reason="Game tick stopped advancing; planning disabled")
         return result

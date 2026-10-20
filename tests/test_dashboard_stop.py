@@ -6,6 +6,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
@@ -14,7 +15,7 @@ from autoengineer_dashboard import Dashboard
 
 class DashboardStopTests(unittest.TestCase):
     def dashboard(self):
-        view = Dashboard.__new__(Dashboard)
+        view: Any = Dashboard.__new__(Dashboard)
         view.proc = SimpleNamespace(poll=lambda: None, stdin=io.StringIO())
         view.current_mode = "semi"
         view.observer = None

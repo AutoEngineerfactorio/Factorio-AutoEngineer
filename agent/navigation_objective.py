@@ -58,6 +58,8 @@ class Objective:
         return self.target
 
     def distance(self, position):
+        if self.target is None:
+            raise ValueError("Objective target has not been observed")
         return math.hypot(position["x"] - self.target["x"], position["y"] - self.target["y"])
 
 

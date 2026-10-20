@@ -50,12 +50,14 @@ class FrameTests(unittest.TestCase):
                 dict(raw(), inventory=[dict(name="iron-gear-wheel", quality="normal", count=3)])
             )
         frame = parse_frame(output.call_args.args[0])
+        assert frame is not None
         self.assertEqual(frame["inventory"][0]["count"], 3)
 
     def test_roundtrip_and_main_inventory_quality(self):
         data = snapshot(raw())
         data.update(DashboardFeed().features)
         frame = parse_frame(PREFIX + json.dumps(dict(schema=1, status="ok", **data)))
+        assert frame is not None
         self.assertEqual(frame["inventory"][0]["count"], 8)
         self.assertEqual(frame["inventory"][0]["quality"], "normal")
 

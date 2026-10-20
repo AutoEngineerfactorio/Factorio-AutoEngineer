@@ -6,6 +6,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
@@ -79,7 +80,7 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_known_route_failures_offer_fresh_approval_without_auto_dispatch(self):
         for status in ["no_path", "stuck", "timeout", "path_rejected"]:
             session, control, planner = await self.run_scenario(status)
-            self.assertEqual(control.approve.await_count, 2)
+            self.assertEqual(cast(AsyncMock, control.approve).await_count, 2)
             self.assertEqual(session.call_tool.await_count, 1)
             self.assertEqual(planner.await_count, 2)
 

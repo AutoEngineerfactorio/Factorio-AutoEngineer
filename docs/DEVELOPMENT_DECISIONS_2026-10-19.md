@@ -2,13 +2,15 @@
 
 This handoff records the user's current priorities for the existing project. It is a requirement and sequencing update, **not** evidence that a feature was implemented or live-tested. The canonical R01–R20 acceptance requirements and safety gates remain binding.
 
+The later [Helper-first roadmap amendment](../ROADMAP.md) supersedes the delivery order below where they differ; it does not change permission boundaries or acceptance evidence.
+
 ## The three modes and order of work
 
 1. **AI Helper (read-only game interaction):** fully reliable mod-aware observations, a live dashboard and an accurate, deterministic production/blueprint planning assistant **first**. Selecting or exporting a local blueprint must not issue game-changing commands.
 2. **Semi-Autonomous:** only after component-specific tests; human-approved bounded actions, re-observation and fail-closed Stop/takeover.
 3. **Fully Autonomous:** stays visibly locked until all required acceptance gates pass; no unilateral expansion of permissions.
 
-The immediate delivery order is **R04 telemetry/data truth → dashboard integration → R05/R06 deterministic AI Helper → R07 blueprint codec/preview after the pre-R07 gate**. Later R08/R09 handle feasible construction, actual supply and verified production. This is a feature priority, not an assertion that R05/R06 are complete.
+The current delivery order is **preserve/harden R01–R03 → Phase 1A Helper + Dashboard → Phase 1B non-gameplay Blueprint Studio → Phase 1C authorized read-only discovery → H1 acceptance → Phase 2 Semi-Autonomous**. Phase 3 Full Autonomy remains separately gated. Offline R07 codec/library/preview follows the specific R04–R06 data-truth and data/math prerequisites in the pre-R07 gate; R08/R09 gameplay construction remains later. This is a feature priority, not an assertion that any requirement is complete.
 
 ## AI Helper: more capable than a Helmod-style calculator
 
@@ -26,7 +28,13 @@ Agent/Zoo Code/Copilot collaboration should use structured, bounded observation 
 
 ## Version and modded-development strategy
 
-Keep the currently qualified baseline pinned until an explicit backup, compatibility audit and regression suite justify changing it. A Factorio 2.1 experimental track may be tested separately; do not presume the current server/mod dependencies support it, update the active executable automatically or migrate saves.
+The current implementation targets Factorio **2.1.22** as primary and keeps
+**2.0.77** as a separate backport target. Maintain isolated profiles, mod
+directories and disposable saves for both. Source compatibility gates and offline
+tests do not establish runtime/backend compatibility: build the restricted backend
+against its pinned upstream, rebuild the patch cleanly, and run the read-only
+acceptance suite on each exact runtime before claiming support. Never auto-update an
+executable or migrate saves between versions.
 
 Keep vanilla/Space Age, Space Exploration and Pyanodons in **separate mod/save/write-data profiles**. The full Pyanodons suite is the continuous *development benchmark* for recipe-graph scale, telemetry completeness, dashboard responsiveness, byproduct/cycle handling and AI Helper latency/memory. Begin with synthetic pY-shaped fixture tests now; use authentic mod data and live pY play only after versioned read-only adapters and safety qualification. See [continuous benchmarks](CONTINUOUS_MOD_BENCHMARKS.md). This does not mean pY has been installed, or that R20 modded gameplay acceptance has been achieved.
 
@@ -38,6 +46,6 @@ Optional time-acceleration/time-tools mods must never silently alter reproducibl
 - Keep the existing FactorioMCP fork/source, restricted backend policies, legal game mechanics, five-tile bounded development movement and human safety controls.
 - R04/R05: establish authenticated, bounded, paginated live observations of game/mod/research/recipe state with freshness and provenance.
 - R06: build and validate multi-product deterministic math, offline fixture cases and eventually isolated physical measurements at 1/5/10-minute windows.
-- R07 blueprint work stays blocked by [pre-R07 acceptance](R04_R06_PRE_R07_ACCEPTANCE.md); semi/full autonomy remain later.
+- R07 offline authoring/library/preview may start only after the specific [pre-R07 data/math prerequisites](R04_R06_PRE_R07_ACCEPTANCE.md) pass; Helper placement remains prohibited. Semi-Autonomous gameplay waits for H1, and Full Autonomy remains separately gated.
 
-**Current change scope:** documentation, synthetic read-only benchmarks and tests. No remote game control, Factorio version upgrade, live pY installation, automatic Zoo Code watcher, blueprint placement or release were executed here.
+**Scope recorded for this handoff:** documentation, synthetic read-only benchmarks and tests. No remote game control, Factorio version upgrade, live pY installation, automatic Zoo Code watcher, blueprint placement or release were executed here. Later work still requires explicit authorization for any live game/save operation, publication or automation.

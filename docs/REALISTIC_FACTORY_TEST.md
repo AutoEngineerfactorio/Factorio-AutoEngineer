@@ -14,13 +14,13 @@ Use three distinct evidence levels. The first two are offline-only, not actual F
 
 ## Safe offline example
 
-From D:\AI\Factorio-AutoEngineer-GitHub in PowerShell:
+From `D:\AI\Factorio-AutoEngineer-Source` in PowerShell, with an approved offline-only command:
 
-    .\.venv\Scripts\python.exe -B memory\test_runner.py --stage reality
-    .\.venv\Scripts\python.exe -B agent\factory_reality_test.py --demo --out .local\test-evidence\realistic-factory-demo-report.json
-    .\.venv\Scripts\python.exe -B agent\factory_reality_test.py --constrained-demo --out .local\test-evidence\constrained-factory-demo-report.json
-    .\.venv\Scripts\python.exe -B memory\test_runner.py --stage all-offline
+    python -B -m unittest discover -s tests -p test_factory_reality_test.py -v
+    python -B agent\factory_reality_test.py --demo --out .local\test-evidence\realistic-factory-demo-report.json
+    python -B agent\factory_reality_test.py --constrained-demo --out .local\test-evidence\constrained-factory-demo-report.json
 
+Create `.local\test-evidence` first if needed. The original `memory\test_runner.py` and `.venv\Scripts\python.exe` commands belong to a different checkout and are not available here. Do not claim all-offline verification from these examples.
 The demo has **four independent illustrative output lines**: iron gears, iron plates, electronic circuits and water. Item production falls to 40% for simulated minutes 5–7 and then recovers. For gears, expected final 1-minute measured rate is 300/min, last 5-minute rate is 228/min and last 10-minute rate is 264/min. All measurements are generated offline. Steam/server is NOT launched.
 
 The separate **constrained demo** adds physically consistent intermediate material accounting and machine/ore capacity checks for iron gears and electronic circuits. It has iron plates (780/min nominal), gears (300/min), circuits (180/min), copper plates (270/min), copper cables (540/min), and water (1200/min simulated). During the 5:00–7:00 input shortage, nominal shared item chains fall to 40% while the independent water line remains unchanged; recovered last-minute gear throughput is 300/min, five-minute average 228/min, and ten-minute average 264/min. These are generated synthetic counters, not measured factory output.

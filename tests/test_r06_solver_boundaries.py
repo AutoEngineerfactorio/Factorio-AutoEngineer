@@ -3,6 +3,7 @@ import math
 import sys
 import unittest
 from pathlib import Path
+from typing import Any, cast
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
 
@@ -62,7 +63,8 @@ class RateEstimatorBoundaries(unittest.TestCase):
             {"iron-plate": True},
         ):
             with self.subTest(supply=supply), self.assertRaises(ValueError):
-                self.solver.compute_production_plan("gear", 1, supply, 100)
+                # Supply maps intentionally include invalid values in this negative test.
+                self.solver.compute_production_plan("gear", 1, cast(Any, supply), 100)
 
     def test_nonfinite_machine_and_recipe_data_are_rejected(self):
         with self.assertRaises(ValueError):

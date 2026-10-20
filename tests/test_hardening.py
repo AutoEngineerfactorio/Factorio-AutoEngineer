@@ -197,6 +197,8 @@ class IsolationTests(unittest.TestCase):
                 patch.object(config.shutil, "which", return_value="dotnet"),
             ):
                 params = config.mcp_parameters()
+            assert params.env is not None
+            assert params.cwd is not None
             self.assertNotIn("AWS_SECRET_ACCESS_KEY", params.env)
             self.assertNotIn("OPENAI_API_KEY", params.env)
             self.assertNotIn("AUTOENGINEER_CONFIG", params.env)

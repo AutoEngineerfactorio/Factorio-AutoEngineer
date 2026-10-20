@@ -12,7 +12,7 @@ class MovementStalled(RuntimeError):
     pass
 
 
-async def monitored_walk(session, arguments, *, interval=0.3, stall_seconds=5, total_seconds=25):
+async def monitored_walk(session, arguments, *, interval: float = 0.3, stall_seconds: float = 5, total_seconds: float = 25):
     async def observe():
         origin = last = None
         began = last_progress = time.monotonic()
@@ -30,9 +30,12 @@ async def monitored_walk(session, arguments, *, interval=0.3, stall_seconds=5, t
                     data = json.loads(part.text)
             if response.is_error or not isinstance(data, dict) or data.get("status") != "active":
                 raise RuntimeError("Movement observation unavailable")
-            point = (data.get("x"), data.get("y"))
-            if any(type(v) not in (int, float) or not math.isfinite(v) for v in point):
+            x, y = data.get("x"), data.get("y")
+            if (not isinstance(x, (int, float)) or type(x) not in (int, float)
+                    or not isinstance(y, (int, float)) or type(y) not in (int, float)
+                    or not math.isfinite(x) or not math.isfinite(y)):
                 raise RuntimeError("Invalid movement observation")
+            point = (x, y)
             if origin is None:
                 origin = point
             if last is None or math.dist(last, point) >= 0.05:

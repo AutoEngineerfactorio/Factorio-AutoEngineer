@@ -1,4 +1,4 @@
-﻿-- Event handlers for human takeover
+-- Event handlers for human takeover
 local function takeover(event)
     local index = event.player_index
     if not index then return end

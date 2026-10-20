@@ -88,7 +88,9 @@ def validate(decision, position):
 
     x, y = decision.get("x"), decision.get("y")
 
-    if any(type(value) not in (int, float) or not math.isfinite(value) for value in (x, y)):
+    if (not isinstance(x, (int, float)) or type(x) not in (int, float)
+            or not isinstance(y, (int, float)) or type(y) not in (int, float)
+            or not math.isfinite(x) or not math.isfinite(y)):
         raise ValueError("Invalid coordinates")
 
     distance = math.dist(

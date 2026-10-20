@@ -65,6 +65,8 @@ class ResourceDiscovery:
             )
         resources = [r for r in resources if r["distance"] <= 50]
         resources.sort(key=lambda r: (r["distance"], r["name"]))
+        if self.origin is None:
+            raise RuntimeError("Resource scan has no validated origin")
         return {
             "scan_radius": 50,
             "resources": resources,

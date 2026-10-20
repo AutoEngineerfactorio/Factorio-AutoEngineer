@@ -127,13 +127,13 @@ def assess_capability_snapshot(
     
     # Validate timestamps
     observed_at = snapshot.get("observed_at")
-    if type(observed_at) not in (int, float) or not math.isfinite(observed_at) or observed_at < 0:
+    if not isinstance(observed_at, (int, float)) or type(observed_at) not in (int, float) or not math.isfinite(observed_at) or observed_at < 0:
         raise ValueError("snapshot['observed_at'] must be finite and nonnegative")
 
-    if type(now) not in (int, float) or not math.isfinite(now) or now < observed_at:
+    if not isinstance(now, (int, float)) or type(now) not in (int, float) or not math.isfinite(now) or now < observed_at:
         raise ValueError("now must be finite and >= observed_at")
 
-    if type(max_age) not in (int, float) or not math.isfinite(max_age) or max_age < 0:
+    if not isinstance(max_age, (int, float)) or type(max_age) not in (int, float) or not math.isfinite(max_age) or max_age < 0:
         raise ValueError("max_age must be finite and nonnegative")
     
     # Compute age

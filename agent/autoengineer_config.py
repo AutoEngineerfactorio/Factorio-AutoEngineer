@@ -1,5 +1,3 @@
-"""Local configuration only; importing this module never launches services."""
-
 import ipaddress
 import json
 import os

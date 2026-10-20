@@ -88,6 +88,15 @@ class ReadOnlyObservations(unittest.TestCase):
         changed["recipes"][0]["ingredients"][0]["amount"] = 3
         c = view_intelligence(dict(status='ok', **snapshot(dict(frame(), capabilities=changed))), received_at=100)
         self.assertNotEqual(a["fingerprint"], c["fingerprint"])
+        changed = caps()
+        changed["recipes"][0]["unlock_technologies"] = [
+            {"name": "automation-2", "researched": False, "enabled": True},
+        ]
+        d = view_intelligence(
+            dict(status='ok', **snapshot(dict(frame(), capabilities=changed))),
+            received_at=100,
+        )
+        self.assertNotEqual(a["fingerprint"], d["fingerprint"])
 
     def test_catalog_fingerprint_is_stable_across_game_ticks(self):
         first = dict(status="ok", **snapshot(dict(frame(), capabilities=caps())))
@@ -158,6 +167,33 @@ class ReadOnlyObservations(unittest.TestCase):
                     recipe["category"] = category
                 validate_capabilities(
                     dict(caps(), recipes=[recipe]), "nauvis", 120
+                )
+
+    def test_recipe_unlock_effects_are_optional_bounded_and_strict(self):
+        recipe = dict(caps()["recipes"][0])
+        recipe["unlock_technologies"] = [
+            {"name": "automation", "researched": True, "enabled": True},
+            {"name": "automation-2", "researched": False, "enabled": True},
+        ]
+        parsed = validate_capabilities(
+            dict(caps(), recipes=[recipe]), "nauvis", 120
+        )
+        self.assertEqual(
+            [item["name"] for item in parsed["recipes"][0]["unlock_technologies"]],
+            ["automation", "automation-2"],
+        )
+
+        for unlocks in (
+            [{"name": "automation", "researched": 1, "enabled": True}],
+            [{"name": "automation", "researched": False, "enabled": True}] * 2,
+            [{"name": "automation", "researched": False, "enabled": True}] * 9,
+            [{"name": "automation-2", "researched": False, "enabled": True},
+             {"name": "automation", "researched": False, "enabled": True}],
+        ):
+            with self.subTest(unlocks=unlocks), self.assertRaises(ValueError):
+                validate_capabilities(
+                    dict(caps(), recipes=[dict(recipe, unlock_technologies=unlocks)]),
+                    "nauvis", 120,
                 )
 
     def test_physical_preview_requires_explicit_observed_rates(self):

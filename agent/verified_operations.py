@@ -147,6 +147,8 @@ async def run_operation(session, control, owner, operation, feed=None):
         and math.dist((after["x"], after["y"]), (before["x"], before["y"])) <= 0.5
     )
     if operation["kind"] == "craft":
+        if input_before is None:
+            raise RuntimeError("Missing pre-operation ingredient inventory")
         used = input_before - inventory(after, ingredient)
         verified = verified and used == operation["count"] * (
             2 if ingredient == "iron-plate" else 1

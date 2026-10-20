@@ -664,11 +664,15 @@ class Supervisor:
                     cwd=str(self.profile.runtime),
                 )
 
+            status_file = self.dashboard_status
+            if status_file is None:
+                raise RuntimeError("Dashboard status path is unavailable")
+
             def ready():
-                if not self.dashboard_status.exists():
+                if not status_file.exists():
                     return False
-                d = json.loads(self.dashboard_status.read_text())
-                return d.get("live") and time.time() - self.dashboard_status.stat().st_mtime < 5
+                d = json.loads(status_file.read_text())
+                return d.get("live") and time.time() - status_file.stat().st_mtime < 5
 
             self.wait(ready, 35, "dashboard")
             self.status("dashboard", "Ready: live Helper dashboard (owned)")

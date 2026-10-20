@@ -245,6 +245,7 @@ class JobJournal:
         stamp = observation.get("observed_monotonic")
         if (
             observation.get("surface") != self.surface
+            or not isinstance(stamp, (int, float))
             or type(stamp) not in (int, float)
             or not 0 <= time.monotonic() - stamp <= 3
             or not control.get("input_adapter")

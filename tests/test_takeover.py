@@ -4,6 +4,7 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace as NS
+from typing import Any
 from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
@@ -13,7 +14,7 @@ from session_safety import ConsoleControl
 
 class TakeoverTests(unittest.TestCase):
     def view(self):
-        v = Dashboard.__new__(Dashboard)
+        v: Any = Dashboard.__new__(Dashboard)
         v.proc = NS(poll=lambda: None, stdin=io.StringIO())
         v.stop_requested = False
         v.stop_confirmed = False

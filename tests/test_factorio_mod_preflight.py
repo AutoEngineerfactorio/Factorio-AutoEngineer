@@ -1,7 +1,6 @@
 """Offline preflight for Factorio mod source folders. No game launch or mod edits."""
 import json
 import re
-import sys
 import unittest
 from pathlib import Path
 

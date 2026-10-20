@@ -12,7 +12,7 @@ from movement_proposals import movement_choices, resolve_choice
 
 
 class MovementProposalTests(unittest.TestCase):
-    def observation(self, x=0, y=0):
+    def observation(self, x: float = 0, y: float = 0):
         return {
             "position": {"x": x, "y": y},
             "resources": {"resources": [{"name": "coal", "center_x": x + 1, "center_y": y - 45}]},
@@ -25,6 +25,7 @@ class MovementProposalTests(unittest.TestCase):
             {"choice": choices[0]["choice"], "reason": "Approach coal"}, choices
         )
         arguments = agent.validate(proposal, state["position"])
+        assert arguments is not None
         self.assertLessEqual(math.hypot(arguments["targetX"], arguments["targetY"]), 5)
         self.assertLess(arguments["targetY"], 0)
         self.assertGreater(arguments["targetY"], -5)

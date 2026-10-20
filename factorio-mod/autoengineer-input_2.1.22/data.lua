@@ -1,4 +1,4 @@
-﻿local inputs = require("inputs")
+local inputs = require("inputs")
 local prototypes = {}
 for _, name in ipairs(inputs) do
   prototypes[#prototypes + 1] = {

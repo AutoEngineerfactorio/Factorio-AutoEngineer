@@ -5,6 +5,7 @@ import json
 import math
 import re
 import time
+from typing import Any
 
 PREFIX = "@AUTOENGINEER_VIEW "
 
@@ -18,15 +19,18 @@ def point(value):
     return {k: value[k] for k in ("x", "y")}
 
 
-def snapshot(raw):
+def snapshot(raw) -> dict[str, Any]:
     if not isinstance(raw, dict) or raw.get("status") != "ok":
         raise ValueError("Display unavailable")
-    data = {"position": point(raw)}
+    data: dict[str, Any] = {"position": point(raw)}
     if type(raw.get("tick")) is not int or raw["tick"] < 0:
         raise ValueError("Invalid display tick")
     if not isinstance(raw.get("surface"), str) or len(raw["surface"]) > 128:
         raise ValueError("Invalid display surface")
     data.update(tick=raw["tick"], surface=raw["surface"])
+    from production_telemetry import validate_telemetry
+
+    data["telemetry"] = validate_telemetry(raw.get("telemetry"), raw["tick"])
     items = raw.get("inventory")
     if items == {}:
         items = []  # Factorio encodes an empty Lua table as {}.
@@ -268,7 +272,7 @@ def overlay_details(raw, origin):
     }
     if not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] != 1:
         raise ValueError("Invalid overlay schema")
-    out = dict(schema=1, available={}, partial={}, player_name=label(value.get("player_name")))
+    out: dict[str, Any] = dict(schema=1, available={}, partial={}, player_name=label(value.get("player_name")))
 
     def pos(v):
         p = point(v)
@@ -332,7 +336,7 @@ def overlay_details(raw, origin):
 
 class DashboardFeed:
     def __init__(self):
-        self.features = {
+        self.features: dict[str, Any] = {
             "visited": [],
             "failed": [],
             "resources": [],
@@ -373,7 +377,7 @@ class DashboardFeed:
             flush=True,
         )
 
-    async def poll(self, session, control, interval=1):
+    async def poll(self, session, control, interval: float = 1):
         surface = None
         while not control.stop.is_set():
             try:
@@ -403,7 +407,7 @@ class DashboardFeed:
             task.add_done_callback(lambda t: None if t.cancelled() else t.exception())
 
 
-def parse_frame(line):
+def parse_frame(line: str) -> dict[str, Any] | None:
     if not line.startswith(PREFIX):
         return None
     if len(line) > 1048576:
@@ -415,7 +419,7 @@ def parse_frame(line):
         return {"status": "unavailable"}
     # Validate backend fields again across the child-process boundary.
     position = point(data.get("position"))
-    clean = snapshot(dict(data, **position))
+    clean: dict[str, Any] = snapshot(dict(data, **position))
     for name, limit in [("visited", 64), ("failed", 64), ("resources", 16)]:
         values = data.get(name)
         if not isinstance(values, list) or len(values) > limit:

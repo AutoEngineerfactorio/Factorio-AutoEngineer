@@ -1,5 +1,3 @@
-"""Independent read-only telemetry. Never arms a lease or dispatches an action."""
-
 import asyncio
 import json
 import os
@@ -30,7 +28,7 @@ class ViewOnly:
         return await self.session.call_tool(name, arguments=args)
 
 
-async def observe(session, control, interval=2):
+async def observe(session, control, interval: float = 2):
     feed = DashboardFeed()
     while not control.stop.is_set():
         try:
