@@ -19,6 +19,7 @@ class TelemetryView(ttk.Frame):
         self.last_progress_at = None
         self.status = tk.StringVar(value="Waiting for production and power telemetry")
         self.production_target = tk.StringVar()
+        self.production_rate_unit = tk.StringVar(value="/s")
         self.power_network = tk.StringVar()
         ttk.Label(self, textvariable=self.status, style="Section.TLabel").pack(
             anchor="w", pady=(0, 6)
@@ -38,13 +39,20 @@ class TelemetryView(ttk.Frame):
         self.production_selector.bind(
             "<<ComboboxSelected>>", lambda _event: self.draw_production()
         )
+        ttk.Label(controls, text="Rate:").pack(side="left", padx=(10, 0))
+        unit_selector = ttk.Combobox(
+            controls, textvariable=self.production_rate_unit,
+            values=("/s", "/min"), state="readonly", width=6
+        )
+        unit_selector.pack(side="left", padx=4)
+        unit_selector.bind("<<ComboboxSelected>>", lambda _event: self.draw_production())
         self.production_canvas = tk.Canvas(
             production_frame, background="#171b20", height=250, highlightthickness=0
         )
         self.production_canvas.pack(fill="both", expand=True)
         self.production_canvas.bind("<Configure>", lambda _event: self.draw_production())
         self.production_legend = tk.StringVar(
-            value="Production orange · consumption blue · rates per minute"
+            value="Production orange · consumption blue · items/sec (2s averages)"
         )
         ttk.Label(
             production_frame, textvariable=self.production_legend, style="Muted.TLabel"
@@ -156,14 +164,25 @@ class TelemetryView(ttk.Frame):
                 previous_tick = -1
             history = self.power_history.setdefault(network_id, [])
             if tick > previous_tick:
-                history.append((
-                    now,
-                    network["maximum_production"] * 60,
-                    network["maximum_consumption"] * 60,
-                    network["consumption_satisfaction"],
-                ))
+                if network.get("source") == "legacy_statistics":
+                    if network["history_available"]:
+                        history.append((
+                            now,
+                            network["observed_output"] * 60,
+                            network["observed_input"] * 60,
+                            None,
+                        ))
+                else:
+                    history.append((
+                        now,
+                        network["maximum_production"] * 60,
+                        network["maximum_consumption"] * 60,
+                        network["consumption_satisfaction"],
+                    ))
                 self.power_last_tick[network_id] = tick
-        self.power_current = current if self.model["power_status"] == "ok" else set()
+        self.power_current = (
+            current if self.model["power_status"] in ("ok", "partial") else set()
+        )
         cutoff = now - POWER_HISTORY_SECONDS
         for network_id, history in list(self.power_history.items()):
             recent = [point for point in history if point[0] >= cutoff]
@@ -172,15 +191,41 @@ class TelemetryView(ttk.Frame):
             else:
                 self.power_history.pop(network_id)
                 self.power_last_tick.pop(network_id, None)
-        satisfaction = [
-            row["consumption_satisfaction"] for row in self.model["networks"]
-        ]
-        if satisfaction:
-            self.power_status.set(
-                f"Latest consumption satisfaction: {min(satisfaction):.1%} "
-                f"across {len(satisfaction)} visible network(s) · watts derived from J/tick × 60"
-                + (" · partial network list" if self.model["power_partial"] else "")
+        network_rows = self.model["networks"]
+        if network_rows:
+            selected = next(
+                (row for row in network_rows
+                 if str(row["network_id"]) == self.power_network.get()),
+                network_rows[0],
             )
+            if selected.get("source") == "legacy_statistics":
+                if selected["history_available"]:
+                    from production_telemetry import format_power
+                    self.power_status.set(
+                        f"Network {selected['network_id']} | Factorio 2.0 historical "
+                        f"electricity input {format_power(selected['observed_input'] * 60)} "
+                        f"/ output {format_power(selected['observed_output'] * 60)} "
+                        f"(1-minute precision, measured average) | "
+                        "Maximum capacity, satisfaction and accumulator state unknown"
+                    )
+                else:
+                    self.power_status.set(
+                        f"Network {selected['network_id']} visible | "
+                        "Factorio 2.0 historical electricity flow not recorded yet; "
+                        "capacity, consumption satisfaction and stored energy unknown"
+                    )
+            else:
+                from production_telemetry import power_rate_display
+                rates = power_rate_display(selected)
+                self.power_status.set(
+                    f"Network {selected['network_id']} | Generation {rates['production']} "
+                    f"| Load {rates['consumption']} | Energy use "
+                    f"{rates['energy_per_second']}/s; {rates['energy_per_minute_at_current_rate']}/min "
+                    f"(at current load, 60 ticks/s) | Satisfaction "
+                    f"{selected['consumption_satisfaction']:.1%} | "
+                    f"{len(network_rows)} visible network(s)"
+                    + (" | partial network list" if self.model["power_partial"] else "")
+                )
         else:
             self.power_status.set(
                 self.model.get("power_reason") or "No visible own network telemetry"
@@ -252,14 +297,27 @@ class TelemetryView(ttk.Frame):
                 self.production_canvas, [], "", "No bounded production series available"
             )
             return
+        from production_telemetry import convert_flow_rate
         row = choices[target.get()]
+        interval = "second" if self.production_rate_unit.get() == "/s" else "minute"
+        output = [convert_flow_rate(x, interval) for x in row["output"]]
+        input_values = [convert_flow_rate(x, interval) for x in row["input"]]
+        unit = "items" if target.get().startswith("item:") else "fluid units"
+        suffix = self.production_rate_unit.get()
+        produced = output[-1] if output else 0.0
+        consumed = input_values[-1] if input_values else 0.0
+        self.production_legend.set(
+            f"Produced {produced:,.2f} {unit}{suffix} · "
+            f"Consumed {consumed:,.2f} {unit}{suffix} · "
+            "orange production / blue consumption · 2-second sample averages"
+        )
         self._draw_lines(
             self.production_canvas,
             [
-                ("production", row["output"], "#e6a44e"),
-                ("consumption", row["input"], "#68aee0"),
+                ("production", output, "#e6a44e"),
+                ("consumption", input_values, "#68aee0"),
             ],
-            f"{target.get()} · per minute · 2-minute history",
+            f"{target.get()} · units{self.production_rate_unit.get()} · 2-minute history (2s bins)",
             "No samples",
         )
 
@@ -267,7 +325,11 @@ class TelemetryView(ttk.Frame):
         network_text = getattr(self, "power_network", None)
         histories = getattr(self, "power_history", {})
         if network_text is None or not network_text.get().isdigit():
-            self._draw_lines(self.power_canvas, [], "", "Power telemetry unavailable")
+            reason = "Power telemetry unavailable"
+            if (self.model and self.model["networks"]
+                    and self.model["networks"][0].get("source") == "legacy_statistics"):
+                reason = "Visible Factorio 2.0 electric network; historical flow not yet recorded"
+            self._draw_lines(self.power_canvas, [], "", reason)
             return
         network_id = int(network_text.get())
         history = histories.get(network_id, [])
@@ -275,9 +337,12 @@ class TelemetryView(ttk.Frame):
         self._draw_lines(
             self.power_canvas,
             [
-                ("max production", [row[1] for row in history], "#e6a44e"),
-                ("max consumption", [row[2] for row in history], "#68aee0"),
+                ("generation/output", [row[1] if row[1] is not None else 0
+                                        for row in history], "#e6a44e"),
+                ("load/input", [row[2] if row[2] is not None else 0
+                                  for row in history], "#68aee0"),
             ],
-            f"{current}Network {network_text.get()} · production orange · consumption blue · watts",
+            f"{current}Network {network_text.get()} · output orange · input blue · watts "
+            "(unknown history is not zero)",
             "Waiting for advancing game ticks",
         )

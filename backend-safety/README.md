@@ -24,7 +24,7 @@ Objective navigation requires the current policy-v8 patch and a rebuild. It vali
 
 The live dashboard requires policy v8 and the bounded, read-only autoengineer_view tool. Rebuild from the current combined patch on clean pinned upstream. See [live dashboard](../docs/LIVE_DASHBOARD.md).
 
-The runtime targets are Factorio 2.1.22 primary and Factorio 2.0.77 backport.
+The active development/runtime target is Factorio **2.1.23**. Version 2.1.22 is retained for rollback; 2.0.77 is an archived compatibility target. Use the new 2.1.23 launcher profile and Lua mod for current testing.
 The adapter reports `script.active_mods["base"]` and does not branch on a
 hard-coded game version. Its source and Python contracts cover both target
 version labels, but the pinned backend checkout is not included here and neither

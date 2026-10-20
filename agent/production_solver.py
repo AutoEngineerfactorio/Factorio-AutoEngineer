@@ -90,6 +90,7 @@ class ProductionPlan:
     feasibility_status: ProductionStatus = "unavailable"
     achievable_rate_gps: float = 0.0  # Modeled output bound; not factory throughput proof
     required_power_kw: float = 0.0  # Power needed to meet target speed (kW)
+    byproducts_per_second: list[dict[str, float]] = field(default_factory=list)  # Byproduct rates per second
 
 
 class ProductionSolver:
@@ -431,6 +432,20 @@ class ProductionSolver:
         else:
             feasibility_status = "estimated"
 
+        # Calculate byproduct rates based on achieved speed
+        byproducts_per_second = []
+        if recipe.byproducts:
+            for bp in recipe.byproducts:
+                # Byproduct rate scales with main output rate
+                bp_rate = explicit_speed * bp.get("amount", 0)
+                # Use 'name' key if present, otherwise use prototype_id fallback
+                name_key = "name" if "name" in bp else "prototype_id"
+                byproducts_per_second.append({
+                    "prototype_id": bp.get(name_key, ""),
+                    "count": bp_rate,
+                    "is_byproduct": True,
+                })
+
         return ProductionPlan(
             target_prototype=target_prototype,
             target_speed_gps=target_speed_gps,
@@ -444,6 +459,7 @@ class ProductionSolver:
             feasibility_status=feasibility_status,
             achievable_rate_gps=max(0.0, explicit_speed),
             required_power_kw=max(0.0, target_speed_gps * recipe.energy_usage),
+            byproducts_per_second=byproducts_per_second,
         )
     
     def compute_recipe_graph(

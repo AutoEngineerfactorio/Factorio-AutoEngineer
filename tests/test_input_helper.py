@@ -9,7 +9,7 @@ try:
 except ImportError:
     raise unittest.SkipTest("Install tests/requirements-lua.txt to run input-helper Lua tests")
 
-MOD = Path(__file__).resolve().parents[1] / "factorio-mod/autoengineer-input_2.1.22"
+MOD = Path(__file__).resolve().parents[1] / "factorio-mod/autoengineer-input_2.1.23"
 
 
 def lua_globals(lua: LuaRuntime) -> Any:
@@ -24,7 +24,8 @@ class InputHelperTests(unittest.TestCase):
         lua.execute("""
           storage={}; handlers={}; calls={}
           defines={events={on_player_controller_changed=1,on_player_driving_changed_state=2,
-            on_player_changed_surface=3,on_pre_player_died=4,on_player_left_game=5}}
+            on_player_changed_surface=3,on_pre_player_died=4,on_player_left_game=5,
+            on_player_respawned=6}}
           script={on_event=function(event,fn) handlers[event]=fn end}
           remote={interfaces={autoengineer_control={takeover=true}},
             add_interface=function(name,methods) remote.interfaces[name]=methods end,

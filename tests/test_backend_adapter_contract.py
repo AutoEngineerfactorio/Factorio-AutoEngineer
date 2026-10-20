@@ -46,6 +46,42 @@ class RecipeResearchAdapterContractTests(unittest.TestCase):
         self.assertIn("telemetry=telemetry", tools)
         self.assertIn("+                telemetry=telemetry,", patch)
 
+    def test_telemetry_status_transition_clears_stale_unavailable_reason(self):
+        source = ADAPTER.read_text(encoding="utf-8")
+        # An available response must not inherit the initially unavailable reason.
+        self.assertIn(
+            'telemetry.production.status = "ok"\n'
+            '                    telemetry.production.reason = nil',
+            source,
+        )
+        # A genuine partial/unavailable response must retain an accurate explanation.
+        self.assertIn(
+            'telemetry.production.status = "partial"\n'
+            '                        telemetry.production.reason = '
+            '"Active history cap reached or one flow type unavailable"',
+            source,
+        )
+        self.assertIn(
+            'telemetry.production.status = "unavailable"\n'
+            '                    telemetry.production.reason = "Production statistics unavailable"',
+            source,
+        )
+
+    def test_version_gated_20_historical_power_never_fabricates_21_metrics(self):
+        source = ADAPTER.read_text(encoding="utf-8")
+        patch = PATCH.read_text(encoding="utf-8")
+        for body in (source, patch):
+            self.assertIn('script.active_mods["base"] or ""', body)
+            self.assertIn('legacy_20 = base_version:match("^2%.0%.") ~= nil', body)
+            self.assertIn("pole.electric_network_statistics", body)
+            self.assertIn('source="legacy_statistics"', body)
+            self.assertIn("history_available=has_history", body)
+            self.assertIn("observed_input=observed_input", body)
+            self.assertIn("observed_output=observed_output", body)
+            self.assertIn("pole.electric_network", body)
+            self.assertIn("parent.flow_last_tick", body)
+            self.assertIn("partial=partial or legacy_20", body)
+
     def test_patch_embeds_exact_readable_adapter_source(self):
         patch = PATCH.read_text(encoding="utf-8")
         for path, source_path in (

@@ -1,4 +1,5 @@
 # AutoEngineer local coding assistant handoff
+**Current Factorio target, October 20 2026:** 2.1.23 is active, using .local/launcher-profiles/2.1.23/launcher.local.json and factorio-mod/autoengineer-input_2.1.23. The portable directory retains Factorio_2.1.22 in its name, but the executable is verified 2.1.23. Use .local/live-pillow-2.1.23 for new tests and keep historical 2.1.22/2.0.77 profiles/evidence unchanged. The 2.1.23 Lua mod-load test passed; roadmap R05/Phase 1A live acceptance is still pending.
 
 Work only in this sanitized foundation copy. Read docs/PLANNING_REQUIREMENTS.md and ROADMAP.md first. Documents describe requirements; they do not authorize uploading, publishing, changing licenses, or operating the game.
 

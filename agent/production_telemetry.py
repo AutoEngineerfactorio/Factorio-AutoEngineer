@@ -22,7 +22,7 @@ def _finite_nonnegative(value, maximum):
     )
 
 
-def _production_group(raw, expected_cap, expected_series):
+def _production_group(raw, expected_cap, expected_series, full_series_limit):
     if not isinstance(raw, dict):
         raise ValueError("Invalid production telemetry group")
     status = raw.get("status")
@@ -35,8 +35,18 @@ def _production_group(raw, expected_cap, expected_series):
         "sample_count", "window_seconds", "prototype_count", "candidate_cap",
         "candidate_bucket", "candidate_bucket_count", "partial", "series",
     }
-    if set(raw) != required or status != "ok":
-        raise ValueError("Invalid production telemetry shape")
+    # Allow optional "reason" field for consistency with validate_telemetry
+    if "reason" in raw:
+        if set(raw) != required | {"reason"}:
+            raise ValueError("Invalid production telemetry shape")
+    else:
+        if set(raw) != required:
+            raise ValueError("Invalid production telemetry shape")
+    full_scan = raw.get("candidate_cap") == 10000
+    limit = full_series_limit if full_scan else expected_series
+    expected_buckets = 1 if full_scan else max(
+        1, math.ceil(raw.get("prototype_count", 0) / expected_cap)
+    )
     if (raw["unit"] != "units_per_minute"
             or raw["precision"] != "ten_minutes"
             or type(raw["sample_interval_seconds"]) not in (int, float)
@@ -47,21 +57,21 @@ def _production_group(raw, expected_cap, expected_series):
             or raw["window_seconds"] != SAMPLE_COUNT * 2
             or type(raw["prototype_count"]) is not int
             or not 0 <= raw["prototype_count"] <= 10000
-            or raw["candidate_cap"] != expected_cap
+            or raw["candidate_cap"] not in (expected_cap, 10000)
             or type(raw["candidate_bucket_count"]) is not int
-            or raw["candidate_bucket_count"] != max(
-                1, math.ceil(raw["prototype_count"] / expected_cap)
-            )
+            or raw["candidate_bucket_count"] != expected_buckets
             or type(raw["candidate_bucket"]) is not int
             or not 1 <= raw["candidate_bucket"] <= raw["candidate_bucket_count"]
             or type(raw["partial"]) is not bool
-            or raw["partial"] != (raw["prototype_count"] > expected_cap)
-            or not isinstance(raw["series"], list)
-            or len(raw["series"]) > expected_series):
+            or (not full_scan and raw["partial"] != (raw["prototype_count"] > expected_cap))
+            or not (isinstance(raw["series"], list) or raw["series"] == {})
+            or len(raw["series"]) > limit
+            or (full_scan and raw["partial"] and len(raw["series"]) != limit)
+            or (full_scan and raw["candidate_bucket_count"] != 1)):
         raise ValueError("Invalid production telemetry bounds")
     series = []
     seen = set()
-    for row in raw["series"]:
+    for row in ([] if raw["series"] == {} else raw["series"]):
         if not isinstance(row, dict) or set(row) != {"name", "input", "output"}:
             raise ValueError("Invalid production flow series")
         name = _label(row["name"])
@@ -75,7 +85,7 @@ def _production_group(raw, expected_cap, expected_series):
                            for value in values)):
                 raise ValueError("Invalid production flow samples")
         series.append({"name": name, "input": list(row["input"]), "output": list(row["output"])})
-    return {
+    result = {
         "status": status,
         "unit": raw["unit"],
         "precision": raw["precision"],
@@ -89,6 +99,9 @@ def _production_group(raw, expected_cap, expected_series):
         "partial": raw["partial"],
         "series": series,
     }
+    if "reason" in raw:
+        result["reason"] = raw["reason"]
+    return result
 
 
 def validate_telemetry(raw, tick):
@@ -141,8 +154,8 @@ def validate_telemetry(raw, tick):
         fluids = {"status": "unavailable", "reason": production.get("reason", "No reason")}
         expected_status = "unavailable"
     else:
-        items = _production_group(production["items"], 128, 4)
-        fluids = _production_group(production["fluids"], 64, 2)
+        items = _production_group(production["items"], 128, 4, 16)
+        fluids = _production_group(production["fluids"], 64, 2, 8)
         expected_status = (
             "unavailable"
             if items["status"] == fluids["status"] == "unavailable"
@@ -156,24 +169,31 @@ def validate_telemetry(raw, tick):
         raise ValueError("Inconsistent production telemetry status")
 
     power = raw["power"]
+    # Factorio Lua serializes empty indexed tables as JSON objects ({}).
+    # Normalize only the empty object; any nonempty mapping remains invalid.
+    power_networks = [] if isinstance(power, dict) and power.get("networks") == {} else (power.get("networks") if isinstance(power, dict) else None)
     if (not isinstance(power, dict)
             or "networks" not in power
             or set(power) not in (
                 {"status", "reason", "unit", "tick", "networks", "partial"},
                 {"status", "unit", "tick", "networks", "partial"},
             )
-            or power.get("status") not in ("ok", "unavailable")
+            or power.get("status") not in ("ok", "partial", "unavailable")
             or power.get("unit") != "joules_per_tick"
             or type(power.get("tick")) is not int or power["tick"] != tick
             or type(power.get("partial")) is not bool
-            or not isinstance(power["networks"], list)
-            or len(power["networks"]) > 8):
+            or not isinstance(power_networks, list)
+            or len(power_networks) > 8):
         raise ValueError("Invalid power telemetry envelope")
     if power["status"] == "unavailable":
         if ("reason" not in power or not isinstance(power["reason"], str)
-                or len(power["networks"]) > 0):
+                or len(power_networks) > 0):
             raise ValueError("Unavailable power telemetry must include a reason and no samples")
-    elif "reason" in power or len(power["networks"]) == 0:
+    elif power["status"] == "partial":
+        if (not isinstance(power.get("reason"), str) or not power["reason"].strip()
+                or not power["partial"] or not power_networks):
+            raise ValueError("Partial legacy power telemetry requires a reason and visible networks")
+    elif "reason" in power or len(power_networks) == 0:
         raise ValueError("Available power telemetry requires network samples and no unavailable reason")
     networks = []
     network_ids = set()
@@ -182,9 +202,8 @@ def validate_telemetry(raw, tick):
         "consumption_satisfaction", "production_satisfaction",
         "accumulator_energy", "accumulator_capacity",
     )
-    for row in power["networks"]:
+    for row in power_networks:
         if (not isinstance(row, dict)
-                or set(row) != {"network_id", "tick", *fields}
                 or type(row.get("network_id")) is not int
                 or not 0 <= row["network_id"] <= 2**32 - 1
                 or row["network_id"] in network_ids
@@ -192,11 +211,32 @@ def validate_telemetry(raw, tick):
             raise ValueError("Invalid electric network sample")
         network_ids.add(row["network_id"])
         normalized = {"network_id": row["network_id"], "tick": tick}
-        for field in fields:
-            if (not _finite_nonnegative(row[field], MAX_POWER_VALUE)
-                    or (field.endswith("satisfaction") and row[field] > 1)):
-                raise ValueError("Invalid electric network measurement")
-            normalized[field] = row[field]
+        if power["status"] == "partial":
+            # Factorio 2.0 lacks the 2.1 instantaneous LuaElectricNetwork API.
+            # Empty history is *unknown*, not evidence of zero production or load.
+            if (set(row) != {"network_id", "tick", "source", "history_available",
+                             "observed_input", "observed_output"}
+                    or row["source"] != "legacy_statistics"
+                    or type(row["history_available"]) is not bool
+                    or not _finite_nonnegative(row["observed_input"], MAX_POWER_VALUE)
+                    or not _finite_nonnegative(row["observed_output"], MAX_POWER_VALUE)
+                    or (not row["history_available"]
+                        and (row["observed_input"] != 0 or row["observed_output"] != 0))):
+                raise ValueError("Invalid historical electric-network sample")
+            normalized.update(
+                source="legacy_statistics",
+                history_available=row["history_available"],
+                observed_input=row["observed_input"],
+                observed_output=row["observed_output"],
+            )
+        else:
+            if set(row) != {"network_id", "tick", *fields}:
+                raise ValueError("Invalid instantaneous electric-network sample")
+            for field in fields:
+                if (not _finite_nonnegative(row[field], MAX_POWER_VALUE)
+                        or (field.endswith("satisfaction") and row[field] > 1)):
+                    raise ValueError("Invalid electric network measurement")
+                normalized[field] = row[field]
         networks.append(normalized)
     if networks != sorted(networks, key=lambda row: row["network_id"]):
         raise ValueError("Electric networks are not deterministically ordered")
@@ -313,4 +353,49 @@ def telemetry_view_model(telemetry):
             production["status"] == "partial" or power.get("partial", False)
         ),
         "recommendations": recommendation_rows,
+    }
+
+
+def convert_flow_rate(value, interval="second"):
+    """Factorio 2.1 LuaFlowStatistics reports item/fluid flow per minute."""
+    if not _finite_nonnegative(value, MAX_FLOW_RATE):
+        raise ValueError("Invalid flow rate")
+    if interval == "second":
+        return value / 60.0
+    if interval == "minute":
+        return value
+    raise ValueError("Expected second or minute interval")
+
+
+def format_power(watts):
+    """Format instantaneous 60-tick/s equivalent electrical power."""
+    if not _finite_nonnegative(watts, MAX_POWER_VALUE):
+        raise ValueError("Invalid power")
+    for factor, label in ((1e9, "GW"), (1e6, "MW"), (1e3, "kW")):
+        if watts >= factor:
+            return f"{watts / factor:,.2f} {label}"
+    return f"{watts:,.1f} W"
+
+
+def format_energy(joules):
+    if not _finite_nonnegative(joules, MAX_POWER_VALUE):
+        raise ValueError("Invalid energy")
+    for factor, label in ((1e9, "GJ"), (1e6, "MJ"), (1e3, "kJ")):
+        if joules >= factor:
+            return f"{joules / factor:,.2f} {label}"
+    return f"{joules:,.1f} J"
+
+
+def power_rate_display(network):
+    """At standard 60 ticks/s, convert J/tick to power and energy rate.
+
+    Estimates over a minute assume steady load; they are not metered totals.
+    """
+    production_watts = network["maximum_production"] * 60
+    consumption_watts = network["maximum_consumption"] * 60
+    return {
+        "production": format_power(production_watts),
+        "consumption": format_power(consumption_watts),
+        "energy_per_second": format_energy(consumption_watts),
+        "energy_per_minute_at_current_rate": format_energy(consumption_watts * 60),
     }

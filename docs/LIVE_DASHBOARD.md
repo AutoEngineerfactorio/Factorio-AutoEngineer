@@ -39,7 +39,7 @@ Source-level UI and offline tests do not claim Windows visual or live-backend
 acceptance; rebuild and verify the read-only adapter against each exact runtime first.
 
 Rebuild the current backend patch before use. The bounded view tool is designed for
-the Factorio 2.1.22 primary target and 2.0.77 backport; source/offline compatibility
+the Factorio 2.1.23 active target; older profile results are archived; source/offline compatibility
 does not replace a clean backend build and live read-only check on each exact runtime.
 The view tool uses bounded optional catalog-page arguments within the policy-v8
 restricted tool boundary.

@@ -22,10 +22,13 @@ This priority amendment controls delivery sequencing while preserving R01–R20
 traceability. It supersedes conflicting sequencing in the older Phase 0–6 plan;
 it does not weaken safety gates or change deployed services, saves, or permissions.
 
-**Runtime targets:** Factorio 2.1.22 is the primary development target; Factorio
-2.0.77 remains a separate backport target. Source-level support and offline tests
-do not constitute installed-runtime acceptance. Validate the restricted backend
-and each target independently without migrating saves.
+**Current runtime target (updated October 20, 2026):** Factorio **2.1.23** is the
+sole active development/test target. Factorio 2.1.22 remains a preserved rollback;
+2.0.77 is an archived backport, with no further work unless separately requested.
+Source-level support and offline tests do not constitute installed-runtime acceptance.
+The previously captured 2.1.22 telemetry evidence remains historical; new 2.1.23
+live tests must be version-pinned and independently verified. Do not migrate normal
+saves. See `.clinerules/17-factorio-2-1-23-primary.md`.
 
 | Track | Requirements | Delivery outcome |
 |---|---|---|
@@ -55,7 +58,7 @@ R01-R09 establish safe control, game-aware engineering, blueprint construction a
 | **R02 - Safe launcher** | 3 | Start/attach/check/stop only owned services; Windows launcher prototype | Tested local prototype; public setup still R19 |
 | **R03 - Durable jobs** | 3-5 | Remember goals, actions, uncertainty and crash-safe restart without duplicates | Tested journal foundation; full graph later |
 | **R04 - Game capability truth** | 3 | Observe actual game version, enabled content, research, recipes, machines, surfaces and freshness | Snapshot source/offline tests published; live coverage open |
-| **R05 - Mechanics evidence ledger** | 3-5 | Record observed/planned/permitted/verified/regression evidence per mechanic and profile | Ledger source/offline tests published; broad live proof open |
+| **R05 - Mechanics evidence ledger** | 3-5 | Record observed/planned/permitted/verified/regression evidence per mechanic and profile | **COMPLETE FOR NOW / provisionally parked by user (2026-10-20)**. Passing 2.1.22 telemetry suite, 2.1.23 Lua/mod-load and offline checks preserved; 2.1.23 full live mechanics, pY and breadth remain deferred, **not accepted or H1-passed**. Reopen only when a concrete bug, dependency or later gate requires it; see R05 ledger. |
 | **R06 - Production mathematics** | 3 | Solve every producible item/fluid/science/intermediate with configurable per-output throughput targets, full recipe-chain constraints and per-output measured-versus-predicted coverage; 300 gears/min is one baseline fixture | **Local work in progress**; acceptance open |
 | **R07 - Blueprint fidelity** | 1B | Safely read/write blueprint strings, books and parameters; maintain private revisioned library and no-placement preview | Offline Helper work follows the specific R04–R06 prerequisites; no placement |
 | **R08 - Build feasibility** | 1B preflight; Phase 2 gameplay | Validate terrain, collision, item bills, belt/pipe/inserter/rail/wire/power connections | Read-only preview before H1; gameplay remains later |

@@ -5,7 +5,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
 
 from dashboard_feed import snapshot
-from production_telemetry import telemetry_view_model, validate_telemetry
+from production_telemetry import (
+    convert_flow_rate,
+    format_power,
+    power_rate_display,
+    telemetry_view_model,
+    validate_telemetry,
+)
 
 
 def group(cap, series, prototype_count=None):
@@ -113,6 +119,145 @@ class ProductionTelemetryTests(unittest.TestCase):
         self.assertEqual(len(model["recommendations"]), 1)
         self.assertEqual(model["recommendations"][0]["severity"], "info")
         self.assertIn("not considered healthy", model["recommendations"][0]["detail"])
+
+    def test_live_empty_lua_tables_are_valid_empty_arrays(self):
+        sample = telemetry()
+        sample["production"]["items"]["series"] = {}
+        sample["production"]["fluids"]["series"] = {}
+        sample["power"] = {
+            "status": "unavailable", "reason": "No visible electric network",
+            "unit": "joules_per_tick", "tick": 123,
+            "networks": {}, "partial": False,
+        }
+        observed = validate_telemetry(sample, 123)
+        self.assertEqual(observed["production"]["items"]["series"], [])
+        self.assertEqual(observed["production"]["fluids"]["series"], [])
+        self.assertEqual(observed["power"]["networks"], [])
+
+    def test_nonempty_object_is_not_mistaken_for_empty_array(self):
+        sample = telemetry()
+        sample["production"]["items"]["series"] = {"unexpected": 1}
+        with self.assertRaises(ValueError):
+            validate_telemetry(sample, 123)
+        sample = telemetry()
+        sample["power"]["networks"] = {"unexpected": 1}
+        with self.assertRaises(ValueError):
+            validate_telemetry(sample, 123)
+
+    def test_complete_catalog_without_false_partial(self):
+        observation = telemetry()
+        observation["production"] = {
+            "status": "ok",
+            "items": group(10000, [{"name": "iron-plate", "input": [120] * 60, "output": [180] * 60}], prototype_count=342),
+            "fluids": group(10000, [], prototype_count=33),
+        }
+        observed = validate_telemetry(observation, 123)
+        self.assertEqual(observed["production"]["status"], "ok")
+        self.assertEqual(observed["production"]["items"]["candidate_bucket_count"], 1)
+        self.assertEqual(len(observed["production"]["items"]["series"]), 1)
+        self.assertEqual(convert_flow_rate(180, "second"), 3)
+        self.assertEqual(convert_flow_rate(180, "minute"), 180)
+
+    def test_format_power_and_energy_from_joules_per_tick(self):
+        row = telemetry()["power"]["networks"][0]
+        rates = power_rate_display(row)
+        self.assertEqual(rates["production"], "60.00 kW")
+        self.assertEqual(rates["consumption"], "54.00 kW")
+        self.assertEqual(rates["energy_per_second"], "54.00 kJ")
+        self.assertEqual(rates["energy_per_minute_at_current_rate"], "3.24 MJ")
+        self.assertEqual(format_power(1800000), "1.80 MW")
+        with self.assertRaises(ValueError):
+            convert_flow_rate(-1)
+        with self.assertRaises(ValueError):
+            convert_flow_rate(10, "hour")
+
+    def test_full_scan_active_history_cap_is_explicit(self):
+        sample = telemetry()
+        item = group(10000, [
+            {"name": f"item-{k:02d}", "input": [1] * 60, "output": [2] * 60}
+            for k in range(16)
+        ], prototype_count=10000)
+        item["partial"] = True
+        sample["production"]["items"] = item
+        sample["production"]["fluids"] = group(10000, [], prototype_count=20)
+        self.assertEqual(validate_telemetry(sample, 123)["production"]["status"], "partial")
+        item["partial"] = False
+        sample["production"]["status"] = "ok"
+        self.assertEqual(validate_telemetry(sample, 123)["production"]["status"], "ok")
+        item["partial"] = True
+        item["series"].pop()
+        sample["production"]["status"] = "partial"
+        with self.assertRaises(ValueError):
+            validate_telemetry(sample, 123)
+
+    def test_legacy_2077_visible_network_with_empty_flow_is_partial_not_zero(self):
+        sample = telemetry()
+        sample["power"] = {
+            "status": "partial", "partial": True,
+            "reason": "2.0 historical electricity statistics; limits unknown",
+            "unit": "joules_per_tick", "tick": 123,
+            "networks": [{
+                "network_id": 2, "tick": 123, "source": "legacy_statistics",
+                "history_available": False, "observed_input": 0.0,
+                "observed_output": 0.0,
+            }],
+        }
+        valid = validate_telemetry(sample, 123)
+        model = telemetry_view_model(valid)
+        self.assertEqual(model["power_status"], "partial")
+        self.assertTrue(model["power_partial"])
+        self.assertEqual(model["networks"][0]["network_id"], 2)
+        self.assertFalse(model["networks"][0]["history_available"])
+        self.assertFalse(any(
+            row["title"].startswith("Check power network")
+            for row in model["recommendations"]
+        ))
+
+    def test_legacy_2077_historical_power_is_not_instantaneous_satisfaction(self):
+        sample = telemetry()
+        sample["power"] = {
+            "status": "partial", "partial": True,
+            "reason": "2.0 historical electricity statistics; satisfaction unknown",
+            "unit": "joules_per_tick", "tick": 123,
+            "networks": [{
+                "network_id": 2, "tick": 123, "source": "legacy_statistics",
+                "history_available": True, "observed_input": 125.25,
+                "observed_output": 201.5,
+            }],
+        }
+        valid = validate_telemetry(sample, 123)
+        self.assertAlmostEqual(valid["power"]["networks"][0]["observed_input"], 125.25)
+        self.assertNotIn("consumption_satisfaction", valid["power"]["networks"][0])
+        self.assertEqual(telemetry_view_model(valid)["power_status"], "partial")
+
+    def test_legacy_2077_rejects_fabricated_capacity_and_missing_history(self):
+        sample = telemetry()
+        sample["power"] = {
+            "status": "partial", "partial": True, "reason": "historical only",
+            "unit": "joules_per_tick", "tick": 123,
+            "networks": [{
+                "network_id": 2, "tick": 123, "source": "legacy_statistics",
+                "history_available": False, "observed_input": 0.0,
+                "observed_output": 0.0,
+            }],
+        }
+        import copy
+        bad = copy.deepcopy(sample)
+        bad["power"]["networks"][0]["consumption_satisfaction"] = 1.0
+        with self.assertRaises(ValueError):
+            validate_telemetry(bad, 123)
+        bad = copy.deepcopy(sample)
+        bad["power"]["networks"][0]["observed_input"] = 1.0
+        with self.assertRaises(ValueError):
+            validate_telemetry(bad, 123)
+        bad = copy.deepcopy(sample)
+        bad["power"]["reason"] = ""
+        with self.assertRaises(ValueError):
+            validate_telemetry(bad, 123)
+        bad = copy.deepcopy(sample)
+        bad["power"]["status"] = "ok"
+        with self.assertRaises(ValueError):
+            validate_telemetry(bad, 123)
 
     def test_rejects_wrong_candidate_bucket_metadata(self):
         invalid = telemetry()

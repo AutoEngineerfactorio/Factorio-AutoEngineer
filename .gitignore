@@ -62,3 +62,8 @@ work/
 
 # Local Pillow test environment
 .venv-visual/
+
+# Temporary Zoo repair outputs (not canonical source files)
+/$null
+/agent/production_telemetry.py.new
+/agent/production_telemetry_fixed.py

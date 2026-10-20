@@ -7,14 +7,18 @@ internal static class RecipeResearchAdapter
         if (page is < 1 or > 10000) throw new ArgumentOutOfRangeException(nameof(page));
         if (pageSize is < 1 or > 32) throw new ArgumentOutOfRangeException(nameof(pageSize));
 
-        return $$"""
-            local capabilities, catalog_status = nil, {page={{page}},page_size={{pageSize}},status="unavailable"}
+        return $$$"""
+            local capabilities, catalog_status = nil, {page={{{page}}},page_size={{{pageSize}}},status="unavailable"}
             local telemetry = {schema=1,tick=game.tick,
                 production={status="unavailable",reason="Production telemetry not collected"},
                 power={status="unavailable",reason="Power telemetry not collected"}}
             do
                 local force, surface = p.force, c.surface
                 local game_version = script.active_mods["base"]
+                local function recipe_categories(recipe)
+                    if game_version:match("^2%.1%.") then return recipe.categories end
+                    return {recipe.category}
+                end
                 local function sorted_names(source, limit)
                     local names = {}
                     for name in pairs(source) do
@@ -186,7 +190,12 @@ internal static class RecipeResearchAdapter
                         hash_text(tostring(recipe.enabled))
                         hash_text(tostring(recipe.hidden))
                         hash_text(tostring(recipe.energy))
-                        hash_text(tostring(recipe.category))
+                        local category_list = recipe_categories(recipe)
+                        if fingerprint_complete then
+                            local category_data = canonical(category_list, 0)
+                            if category_data then hash_text(category_data)
+                            else fingerprint_complete = false end
+                        end
                         if fingerprint_complete then
                             local ingredients = canonical(recipe.ingredients, 0)
                             local products = canonical(recipe.products, 0)
@@ -199,14 +208,14 @@ internal static class RecipeResearchAdapter
                         end
                     end
 
-                    local total, total_pages = #recipe_names, math.ceil(#recipe_names / {{pageSize}})
-                    catalog_status = {page={{page}},page_size={{pageSize}},total_count=total,total_pages=total_pages,status="ok"}
-                    if {{page}} > total_pages and (total_pages > 0 or {{page}} > 1) then
+                    local total, total_pages = #recipe_names, math.ceil(#recipe_names / {{{pageSize}}})
+                    catalog_status = {page={{{page}}},page_size={{{pageSize}}},total_count=total,total_pages=total_pages,status="ok"}
+                    if {{{page}}} > total_pages and (total_pages > 0 or {{{page}}} > 1) then
                         catalog_status.status = "page_out_of_range"
                     else
                         local recipes, recipes_truncated = {}, false
-                        local first = ({{page}} - 1) * {{pageSize}} + 1
-                        local last = math.min(first + {{pageSize}} - 1, total)
+                        local first = ({{{page}}} - 1) * {{{pageSize}}} + 1
+                        local last = math.min(first + {{{pageSize}}} - 1, total)
                         local function normalized_parts(source, limit)
                             if type(source) ~= "table" then return nil end
                             local result, count = {}, 0
@@ -238,20 +247,23 @@ internal static class RecipeResearchAdapter
                             local ingredients = normalized_parts(recipe.ingredients, 16)
                             local products = normalized_parts(recipe.products, 8)
                             local crafting_time = recipe.energy
+                            local category_list = recipe_categories(recipe)
+                            local category = type(category_list) == "table" and #category_list == 1
+                                and category_list[1] or nil
                             if ingredients and products and #products > 0 and type(crafting_time) == "number"
-                                and type(recipe.category) == "string" and #recipe.category > 0
-                                and #recipe.category <= 128
+                                and type(category) == "string" and #category > 0
+                                and #category <= 128
                                 and crafting_time > 0 and crafting_time == crafting_time
                                 and crafting_time ~= math.huge then
                                 local hidden = recipe.hidden == true
                                 local simple = recipe.enabled
-                                    and not hidden and recipe.category == "crafting"
+                                    and not hidden and category == "crafting"
                                     and #products == 1
                                 for _, part in ipairs(ingredients) do if part.type ~= "item" then simple = false end end
                                 for _, part in ipairs(products) do if part.type ~= "item" then simple = false end end
                                 recipes[#recipes+1] = {
                                     name=name,enabled=recipe.enabled,hidden=hidden,simple=simple,
-                                    category=recipe.category,crafting_time=crafting_time,
+                                    category=category,crafting_time=crafting_time,
                                     ingredients=ingredients,products=products,
                                     unlock_technologies=unlock_by_recipe[name] or {}}
                             else
@@ -280,10 +292,10 @@ internal static class RecipeResearchAdapter
                 local function collect_production(prototypes, statistics, limit, tracked_limit)
                     local names = sorted_names(prototypes, 10000)
                     if not names then return nil, "Prototype catalog exceeds telemetry bounds" end
-                    local bucket_count = math.max(1, math.ceil(#names / limit))
-                    local bucket = math.floor(game.tick / 7200) % math.max(bucket_count, 1)
-                    local first = bucket * limit + 1
-                    local last = math.min(first + limit - 1, #names)
+                    -- Scan the whole finite prototype catalog on each observation.
+                    -- Bounded output history is selected only after the global scan.
+                    local bucket_count, bucket = 1, 0
+                    local first, last = 1, #names
                     local candidates = {}
                     for i=first,last do
                         local name = names[i]
@@ -334,13 +346,13 @@ internal static class RecipeResearchAdapter
                         sample_count=60,window_seconds=120,
                         prototype_count=#names,candidate_cap=limit,
                         candidate_bucket=bucket+1,candidate_bucket_count=bucket_count,
-                        partial=#names>limit,series=result}
+                        partial=#candidates>tracked_limit,series=result}
                 end
 
                 local item_ok, item_result = pcall(function()
                     return collect_production(
-                        game.item_prototypes,
-                        force.get_item_production_statistics(surface),128,4)
+                        prototypes.item,
+                        force.get_item_production_statistics(surface),10000,16)
                 end)
                 if item_ok and item_result then
                     telemetry.production.items = item_result
@@ -351,8 +363,8 @@ internal static class RecipeResearchAdapter
                 end
                 local fluid_ok, fluid_result = pcall(function()
                     return collect_production(
-                        game.fluid_prototypes,
-                        force.get_fluid_production_statistics(surface),64,2)
+                        prototypes.fluid,
+                        force.get_fluid_production_statistics(surface),10000,8)
                 end)
                 if fluid_ok and fluid_result then
                     telemetry.production.fluids = fluid_result
@@ -364,9 +376,12 @@ internal static class RecipeResearchAdapter
                 if (telemetry.production.items.status == "ok"
                     or telemetry.production.fluids.status == "ok") then
                     telemetry.production.status = "ok"
-                    if telemetry.production.items.partial or telemetry.production.fluids.partial then
+                    telemetry.production.reason = nil -- Clear the initial unavailable reason.
+                    if telemetry.production.items.partial or telemetry.production.fluids.partial
+                        or telemetry.production.items.status ~= "ok"
+                        or telemetry.production.fluids.status ~= "ok" then
                         telemetry.production.status = "partial"
-                        telemetry.production.reason = "Only one bounded prototype bucket is sampled"
+                        telemetry.production.reason = "Active history cap reached or one flow type unavailable"
                     end
                 else
                     telemetry.production.status = "unavailable"
@@ -380,6 +395,10 @@ internal static class RecipeResearchAdapter
                     local found = surface.find_entities_filtered{
                         area=area,force=force,type="electric-pole",limit=129}
                     local networks, network_poles, seen = {}, {}, {}
+                    -- The instantaneous LuaElectricNetwork API is 2.1-only.
+                    -- Factorio 2.0 exposes historical electric flow statistics on the pole.
+                    local base_version = script.active_mods["base"] or ""
+                    local legacy_20 = base_version:match("^2%.0%.") ~= nil
                     local partial = #found>128
                     for i=1,math.min(#found,128) do
                         local pole = found[i]
@@ -403,44 +422,88 @@ internal static class RecipeResearchAdapter
                     for i=1,math.min(#network_ids,8) do
                         local id = network_ids[i]
                         local pole = network_poles[id]
-                        local sub_network = pole.electric_network
-                        local parent = sub_network and sub_network.parent_network
-                        local flow = parent and parent.flow_last_tick
-                        if flow then
-                            local fields = {
-                                "maximum_production","maximum_consumption",
-                                "consumption_satisfaction","production_satisfaction",
-                                "accumulator_energy","accumulator_capacity"}
-                            local row = {network_id=id,tick=game.tick}
-                            local valid = true
-                            for _,field in ipairs(fields) do
-                                local value = flow[field]
-                                if not finite_number(value) or value < 0
-                                    or (field:find("satisfaction") and value > 1) then
-                                    valid = false
-                                    break
+                        if legacy_20 then
+                            local statistics = pole.electric_network_statistics
+                            if statistics and statistics.valid then
+                                local observed_input, observed_output = 0, 0
+                                local has_history, valid = false, true
+                                for _,entry in ipairs({
+                                    {counts=statistics.input_counts,category="input"},
+                                    {counts=statistics.output_counts,category="output"}
+                                }) do
+                                    for name in pairs(entry.counts or {}) do
+                                        local value = statistics.get_flow_count{
+                                            name=name,category=entry.category,
+                                            precision_index=defines.flow_precision_index.one_minute}
+                                        if not finite_number(value) or value < 0 then
+                                            valid = false
+                                            break
+                                        end
+                                        has_history = true
+                                        if entry.category == "input" then
+                                            observed_input = observed_input + value
+                                        else
+                                            observed_output = observed_output + value
+                                        end
+                                    end
                                 end
-                                row[field] = value
-                            end
-                            if valid then
-                                networks[#networks+1] = row
+                                if valid and finite_number(observed_input)
+                                    and finite_number(observed_output) then
+                                    networks[#networks+1] = {
+                                        network_id=id,tick=game.tick,
+                                        source="legacy_statistics",
+                                        history_available=has_history,
+                                        observed_input=observed_input,
+                                        observed_output=observed_output}
+                                else
+                                    partial = true
+                                end
                             else
                                 partial = true
                             end
                         else
-                            partial = true
+                            local sub_network = pole.electric_network
+                            local parent = sub_network and sub_network.parent_network
+                            local flow = parent and parent.flow_last_tick
+                            if flow then
+                                local fields = {
+                                    "maximum_production","maximum_consumption",
+                                    "consumption_satisfaction","production_satisfaction",
+                                    "accumulator_energy","accumulator_capacity"}
+                                local row = {network_id=id,tick=game.tick}
+                                local valid = true
+                                for _,field in ipairs(fields) do
+                                    local value = flow[field]
+                                    if not finite_number(value) or value < 0
+                                        or (field:find("satisfaction") and value > 1) then
+                                        valid = false
+                                        break
+                                    end
+                                    row[field] = value
+                                end
+                                if valid then
+                                    networks[#networks+1] = row
+                                else
+                                    partial = true
+                                end
+                            else
+                                partial = true
+                            end
                         end
                     end
                     table.sort(networks,function(a,b) return a.network_id < b.network_id end)
                     local reason
                     if #networks == 0 then
                         reason = "No readable visible own electric network in the local chart window"
+                    elseif legacy_20 then
+                        reason = "Factorio 2.0 historical electricity statistics only; maximum capacity, satisfaction and accumulator metrics are unavailable"
                     end
                     return {
-                        status=#networks>0 and "ok" or "unavailable",
+                        status=#networks==0 and "unavailable"
+                            or (legacy_20 and "partial" or "ok"),
                         reason=reason,
                         unit="joules_per_tick",tick=game.tick,networks=networks,
-                        partial=partial}
+                        partial=partial or legacy_20}
                 end)
                 if power_ok and power_result then
                     telemetry.power = power_result

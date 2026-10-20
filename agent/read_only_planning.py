@@ -22,7 +22,7 @@ from production_solver import MaterialInput, ProductionSolver, create_machine, c
 # Exact source-target versions. Qualification here enables read-only catalog
 # preview only; it is not evidence that a runtime/backend combination passed
 # live acceptance. Other patch versions require a separate compatibility check.
-QUALIFIED_GAME_VERSIONS = frozenset({"2.0.77", "2.1.22"})
+QUALIFIED_GAME_VERSIONS = frozenset({"2.0.77", "2.1.22", "2.1.23"})
 QUALIFIED_CONTENT = frozenset({"base", "core", "autoengineer-input"})
 
 

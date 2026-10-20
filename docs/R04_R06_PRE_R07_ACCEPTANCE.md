@@ -4,7 +4,7 @@
 entry criteria below; blueprint placement remains prohibited in Helper and belongs
 to later gameplay work. Offline green tests are not live gameplay acceptance.
 
-**Runtime targets:** Factorio 2.1.22 primary; Factorio 2.0.77 backport. The Python
+**Current target:** Factorio **2.1.23** only. 2.1.22 and 2.0.77 are archived/rollback, not active regression targets. The Python
 source profile gate accepts only these exact versions with the qualified base-only
 content set. That enables bounded read-only preview in offline/source tests; it is
 not a claim that either installed game/backend pair has passed live acceptance.
@@ -49,7 +49,7 @@ workflow; they do not certify all-product gameplay, H1, or placement.
 ### Remaining work before full R07/H1 acceptance
 
 1. R06 still needs net multi-product flow balance and co-product credit, alternatives optimization, machines/throughput, returned catalysts/recycling, quality and stochastic yields, fluid temperatures, module/beacon effects, resource/power/logistics constraints and per-output observed rates. The material preview is not a production-feasibility solver. The catalog does not yet identify compatible machine prototypes or their observed availability.
-2. Validate Factorio 2.1.22 primary and 2.0.77 backport separately against the installed runtime, pinned FactorioMCP backend and restricted patch. Qualify Space Age, Quality and Elevated Rails individually in isolated first-party profiles; other 2.x patch versions remain unqualified. Third-party mod adaptation remains R20 last, with read-only discovery separately gated by 1C.
+2. Validate Factorio 2.1.23 against the installed runtime (previous version results are archived, not transferable), pinned FactorioMCP backend and restricted patch. Qualify Space Age, Quality and Elevated Rails individually in isolated first-party profiles; other 2.x patch versions remain unqualified. Third-party mod adaptation remains R20 last, with read-only discovery separately gated by 1C.
 3. Perform explicit user-approved isolated live read-only verification, then only after H1 and separate authorization, supervised gameplay regression and measured 1/5/10-minute physical-factory runs with negative cases. Do not alter saves or operate Factorio without authorization.
 4. Revalidate legacy CLI denial in the packaged Windows launcher and installed policy-v8 backend before claiming all R01 legacy paths closed.
 
@@ -58,7 +58,7 @@ workflow; they do not certify all-product gameplay, H1, or placement.
 | Item | Offline evidence | Live acceptance |
 |---|---|---|
 | R01 legacy direct CLI | Disabled and unit-tested | Retest packaged backend |
-| Factorio 2.1.22 primary / 2.0.77 backport | Exact-version source gate and offline parser/planner tests; backend adapter uses runtime-reported base version | BLOCKED: FactorioMCP checkout and installed game runtimes unavailable here; build, patch reconstruction and live read-only regression required separately on both |
+| Factorio 2.1.23 active / older profiles archived | Exact-version source gate and offline parser/planner tests; backend adapter uses runtime-reported base version | BLOCKED: FactorioMCP checkout and installed game runtimes unavailable here; build, patch reconstruction and live read-only regression required separately on both |
 | R04/R05 display observation integration | Offline parser, bounded adapter source and fail-closed page assembler | PARTIAL: backend build/runtime and live page aggregation not verified |
 | R04 version/research/recipe pages | Offline same-snapshot assembly tests; incomplete catalogs cannot enable planning | BLOCKED: rebuild and live compatibility/latency acceptance pending |
 | R06 single-recipe rate estimate and material requirements | Test-backed one-recipe estimator plus bounded item/fluid material-path preview; ambiguous/cyclic/unsupported inputs fail closed | PARTIAL: rates, machine/power inputs and material paths are not live-verified; production flow solver remains unfinished |

@@ -4,18 +4,18 @@
 
 This decision **does not** mark R04–R06 complete, authorize installing pY, or move live third-party gameplay compatibility ahead of R20. We can test data structures and planning complexity early while reserving authenticated live-mod support, legal in-game execution and compatibility claims for version-specific evidence.
 
-**Version targets:** Develop against Factorio **2.1.22** as the primary target and
-preserve **2.0.77** as an explicit backport target. Keep separate game installs or
+**Version targets:** Develop against Factorio **2.1.23** as the sole active target and
+preserve **2.1.22** as rollback. Archive 2.0.77 compatibility; avoid routine backport tests. Keep separate game installs or
 profiles, mod directories and saves. Exact-version source gates and offline contracts
 are being added for both; they do not replace builds against each runtime, clean
 backend-patch reconstruction, or isolated live read-only acceptance. Do not migrate
-or overwrite a 2.0.77 save to validate 2.1.22.
+or overwrite a 2.0.77/2.1.22 save to validate 2.1.23.
 
 ## Benchmark ladder
 
 | Layer | When | Evidence to record |
 | --- | --- | --- |
-| Factorio 2.1.22 primary / 2.0.77 backport | Each R04–R06 change on both targets | Installed version, enabled content, observed recipe/research fingerprints, expected/actual math, test result; never infer runtime compatibility from offline tests alone |
+| Factorio 2.1.23 active / older profiles archived | Each R04-R06 change on 2.1.23 | Installed version, enabled content, observed recipe/research fingerprints, expected/actual math, test result; never infer runtime compatibility from offline tests alone |
 | Synthetic pY-shaped recipe graphs | Each graph/solver change | Deterministic fixture version, 100/1,000/10,000 nodes, traversal latency, peak memory, cycles, missing references, truncation |
 | Sanitized real pY catalog | Once user-approved read-only export exists | Exact Factorio/pY version and mod list, snapshot rights, page counts, fingerprints, unlock/availability states, byproducts and alternate routes |
 | Live isolated pY gameplay | Only after relevant safety/adapter qualification | Save/profile, RCON/backend policy, tick/UPS, observation freshness, UI responsiveness, predictions versus measured outcomes |
@@ -42,8 +42,8 @@ The JSON result records total graph nodes, cycles, truncation, construction/trav
 
 ### Isolated runtime layout (future, not created by this document)
 
-- Primary: a designated Factorio 2.1.22 profile with recorded patch version and a disposable save.
-- Backport: a separate Factorio 2.0.77 profile and disposable save. Keep both until runtime and safety regressions pass independently; do not auto-migrate saves.
+- Primary: the isolated Factorio 2.1.23 launcher profile with exact installed patch version and disposable save.
+- Archives: keep 2.0.77 and 2.1.22 profiles/saves only for rollback, without automatic migration or routine retesting.
 - pY: a separate game mod directory, config/write-data directory and save under a pinned *compatible* Factorio build. Check official compatibility for each pY dependency.
 - Space Exploration: a distinct test profile, not mixed into the pY benchmark.
 

@@ -6,6 +6,7 @@
 |---|---|---|
 | 2.0.77 | `.local/launcher-profiles/2.0.77/data/saves/autoengineer-test.zip` | `D:\AI\Factorio-Isolated-2.0.77\Factorio_2.0.77\bin\x64\factorio.exe` |
 | 2.1.22 | `.local/launcher-profiles/2.1.22/data/saves/autoengineer-test.zip` | `D:\AI\Factorio-Isolated-2.1.22\Factorio_2.1.22\bin\x64\factorio.exe` |
+| **2.1.23 ACTIVE** | .local/launcher-profiles/2.1.23/data/saves/autoengineer-test.zip | D:\AI\Factorio-Isolated-2.1.23\Factorio_2.1.22\bin\x64\factorio.exe (verified actual version 2.1.23; inherited directory name) |
 
 These paths are proposed under Git-ignored `.local`. **Do not automatically generate new saves** if the expected one is absent; first inspect existing isolated profiles and obtain a verified game-launch setup. Do not use main-game saves.
 
@@ -19,6 +20,9 @@ These paths are proposed under Git-ignored `.local`. **Do not automatically gene
 
 ## Launcher profiles
 - 2.0.77: `.local/launcher-profiles/2.0.77/launcher.local.json`
-- 2.1.22: `.local/launcher-profiles/2.1.22/launcher.local.json`
+- 2.1.22 (rollback): `.local/launcher-profiles/2.1.22/launcher.local.json`
+- **2.1.23 active:** .local/launcher-profiles/2.1.23/launcher.local.json
 - Both passed `agent.launcher_services.Profile` validation on Windows. This does not imply an actual graphical host/RCON startup test.
 
+
+**Current version decision (2026-10-20):** Factorio 2.1.23 is the only active development/test target. Use the versioned input-helper 2.1.23 and an isolated 2.1.23 launcher profile. Older versions remain preserved; historical acceptance is not transferable.

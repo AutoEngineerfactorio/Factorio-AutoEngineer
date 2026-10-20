@@ -18,7 +18,7 @@ class CompatibilityGates(unittest.TestCase):
         )
 
     def test_exact_20_and_21_targets_are_qualified_but_not_live_verified(self):
-        for version in ("2.0.77", "2.1.22"):
+        for version in ("2.0.77", "2.1.22", "2.1.23"):
             with self.subTest(version=version):
                 result = self.observed(dict(caps(), game_version=version))
                 self.assertTrue(result["planner_ready"])
@@ -32,7 +32,7 @@ class CompatibilityGates(unittest.TestCase):
                 self.assertEqual(preview.feasibility_status, "estimated")
 
     def test_other_patch_versions_remain_unqualified(self):
-        for version in ("2.0.76", "2.1.21", "2.1.23", "2.2.0"):
+        for version in ("2.0.76", "2.1.21", "2.1.24", "2.2.0"):
             with self.subTest(version=version):
                 result = self.observed(dict(caps(), game_version=version))
                 self.assertFalse(result["planner_ready"])
@@ -55,7 +55,7 @@ class CompatibilityGates(unittest.TestCase):
                     )
 
     def test_future_version_and_third_party_mod_remain_unqualified(self):
-        for change in ({"game_version": "2.1.23"},
+        for change in ({"game_version": "2.1.24"},
                        {"enabled_content": ["base", "space-exploration"]}):
             result = self.observed(dict(caps(), **change))
             self.assertFalse(result["planner_ready"])
