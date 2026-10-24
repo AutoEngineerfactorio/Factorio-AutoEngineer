@@ -35,7 +35,7 @@ def page(number, names, *, tick=120, fingerprint=FINGERPRINT, truncated=False,
         },
         "capabilities": {
             "schema": 1, "tick": tick, "surface": "nauvis",
-            "game_version": "2.0.77", "force": "player", "research": ["automation"],
+            "game_version": "2.1.23", "force": "player", "research": ["automation"],
             "enabled_content": ["base"], "truncated": truncated,
             "recipes": [recipe(name) for name in names],
             "source_fingerprint": fingerprint,

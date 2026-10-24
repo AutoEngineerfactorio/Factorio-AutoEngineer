@@ -5,9 +5,37 @@ local function takeover(event)
     storage.human_epochs = storage.human_epochs or {}
     storage.human_epochs[index] = (storage.human_epochs[index] or 0) + 1
     if remote.interfaces.autoengineer_control and remote.interfaces.autoengineer_control.takeover then
-        remote.call("autoengineer_control", "takeover", index)
+        -- This interface name is negotiated dynamically with the companion mod.
+        -- LuaLS cannot infer a static keyof type for runtime registered methods.
+        local invoke_remote = remote.call
+        ---@cast invoke_remote fun(interface_name:string, method:string, player_index:number)
+        invoke_remote("autoengineer_control", "takeover", index)
     end
 end
+
+-- Use registered mod commands, not /c. The game's first-Lua-command warning
+-- must remain intact for arbitrary scripting and achievement-affecting actions.
+commands.add_command("autoengineer-status",
+    "Show your AutoEngineer input guard generation without changing the game.",
+    function(command)
+        if not command.player_index then return end
+        local player = game.get_player(command.player_index)
+        if not player then return end
+        local values = storage.human_epochs or {}
+        player.print("AutoEngineer input guard active; takeover generation: " ..
+            tostring(values[command.player_index] or 0) ..
+            ". See the dashboard for AI connection/status.")
+    end)
+
+commands.add_command("autoengineer-takeover",
+    "Revoke the AutoEngineer control lease for your own character.",
+    function(command)
+        if not command.player_index then return end
+        local player = game.get_player(command.player_index)
+        if not player then return end
+        takeover{player_index = command.player_index}
+        player.print("AutoEngineer human takeover requested.")
+    end)
 
 -- Register event listeners using script.on_event (2.0+)
 script.on_event("autoengineer-human-move-up", takeover)

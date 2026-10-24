@@ -30,7 +30,7 @@ def flow(name, total, *, kind="item", quality=None):
 def short_trace(targets, samples, *, evidence="external_capture_unverified"):
     return {
         "schema": 1, "evidence": evidence,
-        "profile": {"game_version": "2.0.77", "force": "player", "surface": "nauvis",
+        "profile": {"game_version": "2.1.23", "force": "player", "surface": "nauvis",
                     "content": ["base"], "tick_rate": 60},
         "targets": targets, "samples": samples,
     }

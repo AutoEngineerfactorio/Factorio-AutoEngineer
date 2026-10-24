@@ -4,12 +4,15 @@
 
 This decision **does not** mark R04–R06 complete, authorize installing pY, or move live third-party gameplay compatibility ahead of R20. We can test data structures and planning complexity early while reserving authenticated live-mod support, legal in-game execution and compatibility claims for version-specific evidence.
 
-**Version targets:** Develop against Factorio **2.1.23** as the sole active target and
-preserve **2.1.22** as rollback. Archive 2.0.77 compatibility; avoid routine backport tests. Keep separate game installs or
-profiles, mod directories and saves. Exact-version source gates and offline contracts
-are being added for both; they do not replace builds against each runtime, clean
+**Supported game version: Factorio 2.1.23 only.** Future game-version upgrades require a deliberate compatibility review rather than automatic assumptions.
+
+**Version targets:** Factorio **2.1.23** is the sole active development and testing
+target. 2.1.22 and 2.0.77 are archived/rollback and carry no further routine
+backport testing. Keep separate game installs or
+profiles, mod directories and saves. The exact-version source gate and offline contracts
+are being added; they do not replace builds against the runtime, clean
 backend-patch reconstruction, or isolated live read-only acceptance. Do not migrate
-or overwrite a 2.0.77/2.1.22 save to validate 2.1.23.
+or overwrite an archived 2.0.77/2.1.22 save to validate 2.1.23.
 
 ## Benchmark ladder
 

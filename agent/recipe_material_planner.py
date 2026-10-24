@@ -216,9 +216,35 @@ def plan_product_materials(intelligence, material_type, name, amount: float = 1,
         {"recipe": recipe_name, "batches": batches}
         for recipe_name, batches in sorted(selected.items())
     ]
+    selected_details = []
+    for row in selected_rows:
+        recipe = recipes_by_name[row["recipe"]]
+        selected_details.append({
+            **row,
+            "category": recipe["category"],
+            "crafting_time_seconds": recipe["crafting_time"],
+            "ingredients_per_craft": [dict(value) for value in recipe["ingredients"]],
+            "products_per_craft": [dict(value) for value in recipe["products"]],
+        })
     coproduct_rows = [
         coproducts[key] for key in sorted(coproducts)
     ]
+    ambiguities = [
+        dict(row) for row in unresolved_rows
+        if row["reason"].startswith("multiple enabled recipe candidates")
+    ]
+    unlock_limitations = [
+        dict(row) for row in unresolved_rows
+        if row["candidates"] and any(
+            not recipes_by_name[name]["enabled"] for name in row["candidates"]
+        )
+    ]
+    unsupported_mechanics = sorted({
+        row["reason"] for row in unresolved_rows
+        if (row["reason"].startswith("recipe cycle:")
+            or row["reason"] in {
+                "planning complexity limit reached", "quantity budget exceeded"})
+    })
     if (limit_hit or any(
             row["reason"].startswith("recipe cycle:") for row in unresolved_rows
     )):
@@ -231,8 +257,25 @@ def plan_product_materials(intelligence, material_type, name, amount: float = 1,
         "status": status,
         "target": {"type": material_type, "name": name, "amount": float(amount)},
         "selected_recipes": selected_rows,
+        "selected_recipe_details": selected_details,
         "unresolved": unresolved_rows,
+        "recipe_ambiguities": ambiguities,
+        "research_unlock_limitations": unlock_limitations,
         "uncredited_coproducts": coproduct_rows,
+        "coproduct_credit_policy": "reported-only; no requirement credits applied",
+        "unsupported_mechanics": unsupported_mechanics,
+        "uncertainty": [dict(row) for row in unresolved_rows],
+        "source": {
+            "game_version": capabilities["game_version"],
+            "fingerprint": capabilities["source_fingerprint"],
+            "force": capabilities["force"],
+            "surface": capabilities["surface"],
+            "tick": capabilities["tick"],
+            "enabled_content": list(capabilities["enabled_content"]),
+            "observed_research": list(capabilities["research"]),
+        },
+        "throughput_status": "not-computed",
+        "physical_buildability_verified": False,
         "notes": [
             "Offline material requirements only; no machine, throughput, power, "
             "transport, buffer, or buildability claim.",

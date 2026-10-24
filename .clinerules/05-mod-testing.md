@@ -4,8 +4,8 @@ For **every Factorio mod source change**, read `docs/TWO_SAVE_MOD_TEST_POLICY.md
 
 ## Version and documentation gate
 - Identify the installed test version and enabled mods before using a Factorio API.
-- Read the local reference at `.local/factorio-api-offline/<version>/files/`: `runtime-api.json`, `prototype-api.json`, and version-specific HTML.
-- Treat `control.lua` (runtime), `data.lua` (prototype registration), and `settings.lua` (settings stage) as distinct lifecycles. Never guess globals, method signatures, or events.
+- Read the local reference at `.local/factorio-api-offline/2.1.23/files/`: `runtime-api.json`, `prototype-api.json`, and version-specific HTML. The archived 2.1.22 and 2.0.77 folders are historical comparison material only.
+- Treat `control.lua` (runtime), `data.lua` (prototype registration), and `settings.lua` (settings stage) as distinct lifecycles. Never guess globals, method signatures, or events. Confirm the exact 2.1.23 signature of every API call before editing Lua; a name absent from the 2.1.23 JSON is unverified and must be reported, not guessed.
 - Prefer local offline references; consult official internet sources when local docs are insufficient, and cite the actual checked version.
 
 ## Tooling gate
@@ -13,11 +13,12 @@ For **every Factorio mod source change**, read `docs/TWO_SAVE_MOD_TEST_POLICY.md
 - For Python, use the interpreter selected in `.vscode/settings.json`. Confirm dependencies and Pylance diagnostics; do not suppress `reportMissingImports` as a workaround.
 - If an extension command/debugger is unavailable to Zoo, report that limitation; do not pretend an extension ran, and do not use arbitrary RCON/Lua execution to bypass it.
 
-## Only two persistent test saves
-- 2.0.77: `.local/launcher-profiles/2.0.77/data/saves/autoengineer-test.zip`
-- 2.1.22: `.local/launcher-profiles/2.1.22/data/saves/autoengineer-test.zip`
-- Use the corresponding launcher JSON at `.local/launcher-profiles/<version>/launcher.local.json` and isolated executable. Do not create a third persistent test save or use normal Steam/main saves.
-- A mod targeting 2.1 must not be loaded as if it were compatible with 2.0. Test only a verified version-compatible build against 2.0.
+## Existing persistent test saves (only 2.1.23 actively supported)
+- 2.1.23 (supported): `.local/launcher-profiles/2.1.23/data/saves/autoengineer-test.zip`
+- 2.0.77 (archived): `.local/launcher-profiles/2.0.77/data/saves/autoengineer-test.zip`
+- 2.1.22 (archived): `.local/launcher-profiles/2.1.22/data/saves/autoengineer-test.zip`
+- Use the corresponding launcher JSON at `.local/launcher-profiles/<version>/launcher.local.json` and isolated executable. Do not create an additional persistent test save or use normal Steam/main saves.
+- A mod targeting 2.1.23 must not be loaded as if it were compatible with 2.0. Test only a verified version-compatible build against an archived version, and treat that result as historical rather than current acceptance.
 - pY synthetic stress tests remain isolated; adding a separate persistent pY gameplay save requires explicit approval.
 
 ## Required quality gate

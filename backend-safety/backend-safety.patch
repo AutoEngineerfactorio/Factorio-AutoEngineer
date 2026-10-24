@@ -647,7 +647,21 @@
      {
 --- a/FactorioMCP/Services/RconConnectionService.cs
 +++ b/FactorioMCP/Services/RconConnectionService.cs
-@@ -24,7 +24,7 @@
+@@ -19,12 +19,20 @@
+ {
+     private const int MaxStartupAttempts = 5;
+     private static readonly TimeSpan InitialBackoff = TimeSpan.FromSeconds(2);
+-
++    // Factorio 2.1.23 gates the FIRST console command of a fresh server: the
++    // command is held pending and only an identical repeat executes it. A pending
++    // command returns an empty body, so the first real observation would be lost.
++    //
++    // The gate is cleared by repeating the same command, so it is pre-cleared here
++    // with a harmless read-only probe. The probe is sent twice on purpose: the first
++    // send is consumed by the gate, the second executes it. No gameplay command is
++    // ever repeated, so no write can be applied twice.
++    private const string ConsoleGateProbe = "rcon.print('autoengineer-console-gate-probe')";
+     public async Task StartAsync(CancellationToken cancellationToken)
      {
          var host = configuration["FACTORIO_RCON_HOST"] ?? "127.0.0.1";
          var port = int.TryParse(configuration["FACTORIO_RCON_PORT"], out var p) ? p : 27015;
@@ -656,24 +670,53 @@
  
          var delay = InitialBackoff;
          for (var attempt = 1; attempt <= MaxStartupAttempts; attempt++)
-@@ -34,7 +34,7 @@
+@@ -34,7 +42,8 @@
                  await rcon.ConnectAndAuthenticateAsync(host, port, password, cancellationToken);
                  logger.LogInformation("RCON connected to {Host}:{Port}", host, port);
  
 -                await InitializeGameListenersAsync(cancellationToken);
++                await ClearConsoleCommandGateAsync(cancellationToken);
 +                // Restricted profile does not install chat or other unsolicited listeners.
                  return;
              }
              catch (Exception ex) when (attempt < MaxStartupAttempts && !cancellationToken.IsCancellationRequested)
-@@ -50,7 +50,7 @@
+@@ -50,7 +59,8 @@
  
          // Final attempt — let the exception propagate
          await rcon.ConnectAndAuthenticateAsync(host, port, password, cancellationToken);
 -        await InitializeGameListenersAsync(cancellationToken);
++        await ClearConsoleCommandGateAsync(cancellationToken);
 +        // No unsolicited game listeners in the restricted profile.
      }
  
      public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+@@ -67,4 +77,26 @@
+             logger.LogWarning(ex, "Failed to initialize chat listener — chat tools may not work until manually re-initialized");
+         }
+     }
++
++    /// <summary>
++    /// Pre-clear the Factorio 2.1.23 console-command confirmation gate with a
++    /// read-only probe sent twice. The probe observes nothing and changes nothing.
++    /// A failure here is logged and ignored: later commands may still be gated,
++    /// but the restriction is never weakened and no gameplay action is retried.
++    /// </summary>
++    private async Task ClearConsoleCommandGateAsync(CancellationToken cancellationToken)
++    {
++        try
++        {
++            await rcon.ExecuteLuaAsync(ConsoleGateProbe, cancellationToken);
++            var confirmation = await rcon.ExecuteLuaAsync(ConsoleGateProbe, cancellationToken);
++            logger.LogInformation(
++                "Console command gate pre-cleared; probe confirmation: {Confirmation}",
++                confirmation.Trim());
++        }
++        catch (Exception ex)
++        {
++            logger.LogWarning(ex, "Console command gate probe failed; continuing without it");
++        }
++    }
+ }
 --- a/FactorioMCP/Tools/MovementTools.cs
 +++ b/FactorioMCP/Tools/MovementTools.cs
 @@ -21,6 +21,8 @@
@@ -696,7 +739,7 @@
  
 --- /dev/null
 +++ b/FactorioMCP/Tools/AutoEngineerTools.cs
-@@ -0,0 +1,243 @@
+@@ -0,0 +1,354 @@
 +using FactorioMCP.Services;
 +using FactorioMCP.Rcon;
 +using ModelContextProtocol.Server;
@@ -711,7 +754,7 @@
 +    {
 +        ["autoengineer_operation_preview"] = ["kind", "name", "count"],
 +        ["autoengineer_operation"] = ["kind", "name", "count", "safetyOwner", "targetX", "targetY"],
-+        ["autoengineer_view"] = ["catalogPage", "catalogPageSize"], ["autoengineer_policy"] = [], ["get_player_position"] = [],
++        ["autoengineer_view"] = ["catalogPage", "catalogPageSize", "mapChunkX", "mapChunkY"], ["autoengineer_policy"] = [], ["get_player_position"] = [],
 +        ["scan_resources"] = ["radius"], ["get_nearby_entities"] = ["radius"],
 +        ["walk_to_position"] = ["targetX", "targetY", "safetyOwner", "tolerance", "timeoutSeconds"],
 +        ["autoengineer_status"] = ["owner"], ["autoengineer_arm"] = ["owner"], ["autoengineer_renew"] = ["owner"], ["autoengineer_stop"] = ["owner"]
@@ -722,9 +765,32 @@
 +        version=8, max_walk=5, restricted=true,
 +        mode=Environment.GetEnvironmentVariable("AUTOENGINEER_BACKEND_MODE") ?? "helper" });
 +
-+    [McpServerTool(Name = "autoengineer_view"), Description("Read bounded single-player state and a paged recipe/research catalog; no game actions.")]
-+    public Task<string> View(int catalogPage = 1, int catalogPageSize = 16, CancellationToken cancellationToken = default) =>
-+        rcon.ExecuteLuaAsync("""
++    [McpServerTool(Name = "autoengineer_view"), Description("Read bounded single-player state, one aligned map chunk and a paged recipe/research catalog; no game actions.")]
++    public Task<string> View(int catalogPage = 1, int catalogPageSize = 16, int mapChunkX = int.MinValue, int mapChunkY = int.MinValue, CancellationToken cancellationToken = default)
++    {
++        // Optional read-only map chunk selection. The chunk indices are the
++        // 64-tile aligned grid the dashboard caches. A negative sentinel means
++        // "the chunk containing the player", which keeps the old behaviour.
++        if ((mapChunkX == int.MinValue) != (mapChunkY == int.MinValue))
++            throw new ArgumentException("Map chunk coordinates must be given together");
++        if (mapChunkX != int.MinValue && (Math.Abs(mapChunkX) > 100000 || Math.Abs(mapChunkY) > 100000))
++            throw new ArgumentException("Map chunk coordinates rejected");
++        return ViewCore(catalogPage, catalogPageSize, mapChunkX, mapChunkY, cancellationToken);
++    }
++
++    private Task<string> ViewCore(int catalogPage, int catalogPageSize, int mapChunkX, int mapChunkY, CancellationToken cancellationToken)
++    {
++        // The chunk selection is injected as a separate, strictly numeric Lua
++        // prelude so the observation body stays a plain raw string. Both values
++        // are validated integers, so no Lua code can be injected through them.
++        string prelude = mapChunkX == int.MinValue
++            ? "local MAP_CHUNK_SELECTED_X=nil local MAP_CHUNK_SELECTED_Y=nil\n"
++            : $"local MAP_CHUNK_SELECTED_X={mapChunkX} local MAP_CHUNK_SELECTED_Y={mapChunkY}\n";
++        return ViewLua(prelude, catalogPage, catalogPageSize, cancellationToken);
++    }
++
++    private Task<string> ViewLua(string prelude, int catalogPage, int catalogPageSize, CancellationToken cancellationToken) =>
++        rcon.ExecuteLuaAsync(prelude + """
 +            local p = game.connected_players[1]
 +            if #game.connected_players ~= 1 or not p or not p.character then
 +                rcon.print('{"status":"unavailable"}') return
@@ -752,8 +818,21 @@
 +                if #inv > 2000 then truncated = true end
 +            end
 +            -- Display only: do not chart, generate chunks, select entities or change player state.
++            -- The observed window is exactly one aligned 64x64 map chunk. The
++            -- terrain raster and the entity queries MUST cover the same window,
++            -- otherwise the map shows terrain for far more area than it shows
++            -- natural objects for, which reads as missing forest.
++            local MAP_CHUNK_TILES=64
++            local MAP_CHUNK_ENTITY_LIMIT=2048
++            local mapChunkX=math.floor(c.position.x/MAP_CHUNK_TILES)
++            local mapChunkY=math.floor(c.position.y/MAP_CHUNK_TILES)
++            if MAP_CHUNK_SELECTED_X~=nil then
++                mapChunkX=MAP_CHUNK_SELECTED_X
++                mapChunkY=MAP_CHUNK_SELECTED_Y
++            end
++            local ox=mapChunkX*MAP_CHUNK_TILES
++            local oy=mapChunkY*MAP_CHUNK_TILES
 +            local tiles, entities = {}, {}
-+            local ox,oy=math.floor(c.position.x/4)*4-128,math.floor(c.position.y/4)*4-128
 +            local function visible(x,y)
 +                return p.force.is_chunk_visible(c.surface,{math.floor(x/32),math.floor(y/32)})
 +            end
@@ -762,9 +841,9 @@
 +            end
 +            -- Palette-indexed tile rows preserve one-tile detail without huge JSON cell objects.
 +            local rows,palette,colors,chunks={},{"#000000"},{["#000000"]=0},{}
-+            for y=oy,oy+255 do
++            for y=oy,oy+MAP_CHUNK_TILES-1 do
 +                local row={}
-+                for x=ox,ox+255 do
++                for x=ox,ox+MAP_CHUNK_TILES-1 do
 +                    local cx,cy=math.floor(x/32),math.floor(y/32)
 +                    local ck=cx..":"..cy
 +                    local chunk=chunks[ck]
@@ -788,27 +867,101 @@
 +                rows[#rows+1]=table.concat(row)
 +            end
 +            local groups={
-+                {kind="resource",types={"resource"},limit=2048},
-+                {kind="nature",types={"tree","simple-entity"},limit=512},
++                {kind="resource",types={"resource"},limit=MAP_CHUNK_ENTITY_LIMIT},
++                {kind="nature",types={"tree","simple-entity","cliff"},limit=MAP_CHUNK_ENTITY_LIMIT},
 +                {kind="building",force=p.force.name,limit=256},
 +                {kind="enemy",force="enemy",limit=128}}
++            -- Chart colour for one prototype. Factorio 2.1.23 charts an entity
++            -- with friendly_map_color or enemy_map_color when they are defined
++            -- and falls back to map_color otherwise. Read-only prototype access.
++            local function chart_color(proto)
++                if not proto then return nil end
++                for _,key in ipairs({"friendly_map_color","enemy_map_color","map_color"}) do
++                    local ok,value=pcall(function() return proto[key] end)
++                    if ok and type(value)=="table" and value.r and value.g and value.b then
++                        -- Compact colour table: three bytes and an alpha flag.
++                        local r=math.floor(math.min(1,math.max(0,tonumber(value.r) or 0))*255+0.5)
++                        local g=math.floor(math.min(1,math.max(0,tonumber(value.g) or 0))*255+0.5)
++                        local b=math.floor(math.min(1,math.max(0,tonumber(value.b) or 0))*255+0.5)
++                        return {r=r,g=g,b=b}
++                    end
++                end
++                return nil
++            end
++            -- Chart colour for a prototype that belongs to the enemy force.
++            -- Factorio charts an enemy with its own ``enemy_map_color`` when the
++            -- prototype defines one, so that colour is preferred over the
++            -- generic ``map_color``. The read-only prototype accessors are the
++            -- same ones the generic resolver uses.
++            local function enemy_chart_color(proto)
++                if not proto then return nil end
++                local ok,value=pcall(function() return proto.enemy_map_color end)
++                if ok and type(value)=="table" and value.r and value.g and value.b then
++                    local r=math.floor(math.min(1,math.max(0,tonumber(value.r) or 0))*255+0.5)
++                    local g=math.floor(math.min(1,math.max(0,tonumber(value.g) or 0))*255+0.5)
++                    local b=math.floor(math.min(1,math.max(0,tonumber(value.b) or 0))*255+0.5)
++                    return {r=r,g=g,b=b}
++                end
++                return nil
++            end
 +            local partial=false
++            local chunk_complete=true
 +            for _,g in ipairs(groups) do
-+                local found=c.surface.find_entities_filtered{area={{ox,oy},{ox+256,oy+256}},
++                local found=c.surface.find_entities_filtered{area={{ox,oy},{ox+MAP_CHUNK_TILES,oy+MAP_CHUNK_TILES}},
 +                    type=g.types,force=g.force,limit=g.limit+1}
-+                if #found>g.limit then partial=true end
++                if #found>g.limit then partial=true;chunk_complete=false end
 +                for i=1,math.min(#found,g.limit) do
 +                    local e=found[i]
-+                    if e.valid and e.type~="character" and e.position.x>=ox and e.position.x<ox+256 and e.position.y>=oy and e.position.y<oy+256 and visible(e.position.x,e.position.y) then
-+                        entities[#entities+1]={x=e.position.x,y=e.position.y,name=e.name,kind=g.kind}
++                    if e.valid and e.type~="character" and e.position.x>=ox and e.position.x<ox+MAP_CHUNK_TILES and e.position.y>=oy and e.position.y<oy+MAP_CHUNK_TILES and visible(e.position.x,e.position.y) then
++                        local record={x=e.position.x,y=e.position.y,name=e.name,kind=g.kind}
++                        -- The 2.1.23 LuaEntity.bounding_box is already in world
++                        -- coordinates and reflects orientation and offset.
++                        local ok,box=pcall(function() return e.bounding_box end)
++                        if ok and box and box.left_top and box.right_bottom then
++                            local a,b=box.left_top,box.right_bottom
++                            if b.x>a.x and b.y>a.y and b.x-a.x<=128 and b.y-a.y<=128 then
++                                record.bounds={left_top={x=a.x,y=a.y},right_bottom={x=b.x,y=b.y}}
++                            end
++                        end
++                        if g.kind=="nature" or g.kind=="resource" then
++                            -- Natural objects and resources need their own
++                            -- chart colour and prototype identity so the map
++                            -- can draw a tree, a rock, a cliff and an ore
++                            -- deposit differently.
++                            record.entity_type=e.type
++                            local pok,ptype=pcall(function() return e.prototype.type end)
++                            if pok and type(ptype)=="string" then record.prototype_type=ptype end
++                            local cok,color=pcall(chart_color,e.prototype)
++                            if cok and color then record.map_color=color end
++                            local dok,dir=pcall(function() return e.direction end)
++                            if dok and type(dir)=="number" then record.direction=dir end
++                            -- The graphics variation selects the tree's sprite
++                            -- tint from the prototype's own colour palette,
++                            -- which is what the map draws the tree with.
++                            local vok,variation=pcall(function() return e.graphics_variation end)
++                            if vok and type(variation)=="number" and variation>=0 and variation<256 then
++                                record.graphics_variation=variation
++                            end
++                        elseif g.kind=="enemy" then
++                            -- A currently visible enemy needs its prototype
++                            -- identity and the game's own enemy chart colour
++                            -- so the map marks it the way Factorio does,
++                            -- instead of guessing a generic threat colour.
++                            record.entity_type=e.type
++                            local pok,ptype=pcall(function() return e.prototype.type end)
++                            if pok and type(ptype)=="string" then record.prototype_type=ptype end
++                            local cok,color=pcall(enemy_chart_color,e.prototype)
++                            if cok and color then record.map_color=color end
++                        end
++                        entities[#entities+1]=record
 +                    end
 +                end
 +            end
 +            -- Optional read-only overlays. No charting, connector creation or world mutation.
 +            local overlays={schema=1,available={},partial={},player_name=string.sub(p.name,1,128)}
-+            local area={{ox,oy},{ox+256,oy+256}}
++            local area={{ox,oy},{ox+MAP_CHUNK_TILES,oy+MAP_CHUNK_TILES}}
 +            local function inside(pos)
-+                return pos.x>=ox and pos.x<ox+256 and pos.y>=oy and pos.y<oy+256
++                return pos.x>=ox and pos.x<ox+MAP_CHUNK_TILES and pos.y>=oy and pos.y<oy+MAP_CHUNK_TILES
 +            end
 +            local function clean(text)
 +                return string.sub(string.gsub(text or "","%c"," "),1,128)
@@ -821,12 +974,12 @@
 +            end
 +            layer("pollution",function()
 +                local result={}
-+                for cy=math.floor(oy/32),math.floor((oy+255)/32) do
-+                    for cx=math.floor(ox/32),math.floor((ox+255)/32) do
++                for cy=math.floor(oy/32),math.floor((oy+MAP_CHUNK_TILES-1)/32) do
++                    for cx=math.floor(ox/32),math.floor((ox+MAP_CHUNK_TILES-1)/32) do
 +                        local x,y=math.max(ox,cx*32),math.max(oy,cy*32)
 +                        if charted(x,y) then
 +                            result[#result+1]={x=x,y=y,value=c.surface.get_pollution({x,y}),
-+                                width=math.min(ox+256,(cx+1)*32)-x,height=math.min(oy+256,(cy+1)*32)-y}
++                                width=math.min(ox+MAP_CHUNK_TILES,(cx+1)*32)-x,height=math.min(oy+MAP_CHUNK_TILES,(cy+1)*32)-y}
 +                        end
 +                    end
 +                end
@@ -896,7 +1049,8 @@
 +                slots=slots,capacity=inv and #inv or 0,slots_truncated=inv and #inv>200 or false,
 +                telemetry=telemetry,
 +                catalog_status=catalog_status,capabilities=capabilities,
-+                terrain={origin={x=ox,y=oy},step=1,rows=rows,palette=palette,entities=entities,partial=partial}}))
++                terrain={origin={x=ox,y=oy},step=1,rows=rows,palette=palette,entities=entities,partial=partial,
++                map_chunk={x=mapChunkX,y=mapChunkY,size=MAP_CHUNK_TILES},chunk_complete=chunk_complete}}))
 +            """.Replace("-- AUTOENGINEER_CAPABILITY_ADAPTER --",
 +                RecipeResearchAdapter.BuildLua(catalogPage, catalogPageSize), StringComparison.Ordinal),
 +            cancellationToken);
@@ -1575,7 +1729,7 @@
 +}
 --- /dev/null
 +++ b/FactorioMCP/Tools/RecipeResearchAdapter.cs
-@@ -0,0 +1,518 @@
+@@ -0,0 +1,545 @@
 +namespace FactorioMCP.Tools;
 +
 +internal static class RecipeResearchAdapter
@@ -1794,7 +1948,7 @@
 +                        local recipes, recipes_truncated = {}, false
 +                        local first = ({{{page}}} - 1) * {{{pageSize}}} + 1
 +                        local last = math.min(first + {{{pageSize}}} - 1, total)
-+                        local function normalized_parts(source, limit)
++                        local function normalized_parts(source, limit, is_product)
 +                            if type(source) ~= "table" then return nil end
 +                            local result, count = {}, 0
 +                            for key, part in pairs(source) do
@@ -1804,12 +1958,64 @@
 +                                if type(part) ~= "table" or type(part.name) ~= "string"
 +                                    or #part.name < 1 or #part.name > 128
 +                                    or (part.type ~= "item" and part.type ~= "fluid")
-+                                    or type(part.amount) ~= "number" or part.amount <= 0
++                                    or type(part.amount) ~= "number"
 +                                    or part.amount ~= part.amount or part.amount == math.huge then return nil end
-+                                for field in pairs(part) do
-+                                    if field ~= "name" and field ~= "type" and field ~= "amount" then return nil end
++                                -- Factorio 2.1 adds quality and probability fields to
++                                -- products. They are accepted only for products, only
++                                -- with valid bounded values, and they mark the row as
++                                -- not deterministic. Unknown fields stay rejected.
++                                -- Observed 2.1.23 shapes: affected_by_quality is a
++                                -- boolean, independent_probability is a number in
++                                -- 0..1, and shared_probability is a {min,max} table.
++                                -- A product may legitimately have amount 0 when the
++                                -- real yield comes from a probability. An ingredient
++                                -- must consume a positive amount.
++                                if is_product then
++                                    if part.amount < 0 then return nil end
++                                else
++                                    if part.amount <= 0 then return nil end
 +                                end
-+                                result[#result+1] = {name=part.name,type=part.type,amount=part.amount}
++                                local deterministic = true
++                                for field, value in pairs(part) do
++                                    if field == "name" or field == "type" or field == "amount" then
++                                        -- already validated
++                                    elseif field == "affected_by_quality" then
++                                        if not is_product then return nil end
++                                        if type(value) ~= "boolean" then return nil end
++                                    elseif field == "independent_probability" then
++                                        if not is_product then return nil end
++                                        if type(value) ~= "number" or value ~= value
++                                            or value < 0 or value > 1 or value == math.huge then return nil end
++                                        if value < 1 then deterministic = false end
++                                    elseif field == "shared_probability" then
++                                        if not is_product then return nil end
++                                        if type(value) ~= "table" then return nil end
++                                        local low, high = value.min, value.max
++                                        if type(low) ~= "number" or type(high) ~= "number"
++                                            or low ~= low or high ~= high
++                                            or low < 0 or high > 1
++                                            or low > high
++                                            or low == math.huge or high == math.huge then return nil end
++                                        if high < 1 then deterministic = false end
++                                    elseif field == "ignored_by_stats" then
++                                        -- Ingredient flag: does not count towards
++                                        -- player and factory statistics.
++                                        if type(value) ~= "boolean" then return nil end
++                                    elseif field == "spoil_weight" then
++                                        -- Ingredient fluid spoilage weight.
++                                        if type(value) ~= "number" or value ~= value
++                                            or value < 0 or value == math.huge then return nil end
++                                    elseif field == "fluidbox_multiplier" or field == "fluidbox_index" then
++                                        -- Ingredient fluid-box placement hints.
++                                        if type(value) ~= "number" or value ~= value
++                                            or value == math.huge or value == -math.huge then return nil end
++                                    else
++                                        return nil
++                                    end
++                                end
++                                local row = {name=part.name,type=part.type,amount=part.amount}
++                                if not deterministic then row.deterministic = false end
++                                result[#result+1] = row
 +                            end
 +                            if count ~= #source then return nil end
 +                            table.sort(result, function(a,b)
@@ -1822,12 +2028,28 @@
 +                        for i=first,last do
 +                            local name = recipe_names[i]
 +                            local recipe = force.recipes[name]
-+                            local ingredients = normalized_parts(recipe.ingredients, 16)
-+                            local products = normalized_parts(recipe.products, 8)
++                            local ingredients = normalized_parts(recipe.ingredients, 16, false)
++                            local products = normalized_parts(recipe.products, 8, true)
 +                            local crafting_time = recipe.energy
 +                            local category_list = recipe_categories(recipe)
-+                            local category = type(category_list) == "table" and #category_list == 1
-+                                and category_list[1] or nil
++                            -- Factorio 2.1 recipes may declare several categories.
++                            -- The first is the primary category; the full bounded
++                            -- list is reported alongside it so nothing is hidden.
++                            local categories = {}
++                            if type(category_list) == "table" then
++                                for i = 1, math.min(#category_list, 8) do
++                                    local entry = category_list[i]
++                                    if type(entry) ~= "string" or #entry < 1 or #entry > 128 then
++                                        categories = nil
++                                        break
++                                    end
++                                    categories[#categories+1] = entry
++                                end
++                                if categories and #category_list > #categories then categories = nil end
++                            else
++                                categories = nil
++                            end
++                            local category = categories and #categories > 0 and categories[1] or nil
 +                            if ingredients and products and #products > 0 and type(crafting_time) == "number"
 +                                and type(category) == "string" and #category > 0
 +                                and #category <= 128
@@ -1838,10 +2060,14 @@
 +                                    and not hidden and category == "crafting"
 +                                    and #products == 1
 +                                for _, part in ipairs(ingredients) do if part.type ~= "item" then simple = false end end
-+                                for _, part in ipairs(products) do if part.type ~= "item" then simple = false end end
++                                for _, part in ipairs(products) do
++                                    if part.type ~= "item" then simple = false end
++                                    if part.deterministic == false then simple = false end
++                                end
 +                                recipes[#recipes+1] = {
 +                                    name=name,enabled=recipe.enabled,hidden=hidden,simple=simple,
-+                                    category=category,crafting_time=crafting_time,
++                                    category=category,categories=categories,
++                                    crafting_time=crafting_time,
 +                                    ingredients=ingredients,products=products,
 +                                    unlock_technologies=unlock_by_recipe[name] or {}}
 +                            else
@@ -1973,10 +2199,9 @@
 +                    local found = surface.find_entities_filtered{
 +                        area=area,force=force,type="electric-pole",limit=129}
 +                    local networks, network_poles, seen = {}, {}, {}
-+                    -- The instantaneous LuaElectricNetwork API is 2.1-only.
-+                    -- Factorio 2.0 exposes historical electric flow statistics on the pole.
-+                    local base_version = script.active_mods["base"] or ""
-+                    local legacy_20 = base_version:match("^2%.0%.") ~= nil
++                    -- The instantaneous LuaElectricNetwork API is the supported
++                    -- Factorio 2.1.23 path. The archived 2.0 historical
++                    -- statistics fallback has been removed.
 +                    local partial = #found>128
 +                    for i=1,math.min(#found,128) do
 +                        local pole = found[i]
@@ -2000,88 +2225,44 @@
 +                    for i=1,math.min(#network_ids,8) do
 +                        local id = network_ids[i]
 +                        local pole = network_poles[id]
-+                        if legacy_20 then
-+                            local statistics = pole.electric_network_statistics
-+                            if statistics and statistics.valid then
-+                                local observed_input, observed_output = 0, 0
-+                                local has_history, valid = false, true
-+                                for _,entry in ipairs({
-+                                    {counts=statistics.input_counts,category="input"},
-+                                    {counts=statistics.output_counts,category="output"}
-+                                }) do
-+                                    for name in pairs(entry.counts or {}) do
-+                                        local value = statistics.get_flow_count{
-+                                            name=name,category=entry.category,
-+                                            precision_index=defines.flow_precision_index.one_minute}
-+                                        if not finite_number(value) or value < 0 then
-+                                            valid = false
-+                                            break
-+                                        end
-+                                        has_history = true
-+                                        if entry.category == "input" then
-+                                            observed_input = observed_input + value
-+                                        else
-+                                            observed_output = observed_output + value
-+                                        end
-+                                    end
++                        local sub_network = pole.electric_network
++                        local parent = sub_network and sub_network.parent_network
++                        local flow = parent and parent.flow_last_tick
++                        if flow then
++                            local fields = {
++                                "maximum_production","maximum_consumption",
++                                "consumption_satisfaction","production_satisfaction",
++                                "accumulator_energy","accumulator_capacity"}
++                            local row = {network_id=id,tick=game.tick}
++                            local valid = true
++                            for _,field in ipairs(fields) do
++                                local value = flow[field]
++                                if not finite_number(value) or value < 0
++                                    or (field:find("satisfaction") and value > 1) then
++                                    valid = false
++                                    break
 +                                end
-+                                if valid and finite_number(observed_input)
-+                                    and finite_number(observed_output) then
-+                                    networks[#networks+1] = {
-+                                        network_id=id,tick=game.tick,
-+                                        source="legacy_statistics",
-+                                        history_available=has_history,
-+                                        observed_input=observed_input,
-+                                        observed_output=observed_output}
-+                                else
-+                                    partial = true
-+                                end
++                                row[field] = value
++                            end
++                            if valid then
++                                networks[#networks+1] = row
 +                            else
 +                                partial = true
 +                            end
 +                        else
-+                            local sub_network = pole.electric_network
-+                            local parent = sub_network and sub_network.parent_network
-+                            local flow = parent and parent.flow_last_tick
-+                            if flow then
-+                                local fields = {
-+                                    "maximum_production","maximum_consumption",
-+                                    "consumption_satisfaction","production_satisfaction",
-+                                    "accumulator_energy","accumulator_capacity"}
-+                                local row = {network_id=id,tick=game.tick}
-+                                local valid = true
-+                                for _,field in ipairs(fields) do
-+                                    local value = flow[field]
-+                                    if not finite_number(value) or value < 0
-+                                        or (field:find("satisfaction") and value > 1) then
-+                                        valid = false
-+                                        break
-+                                    end
-+                                    row[field] = value
-+                                end
-+                                if valid then
-+                                    networks[#networks+1] = row
-+                                else
-+                                    partial = true
-+                                end
-+                            else
-+                                partial = true
-+                            end
++                            partial = true
 +                        end
 +                    end
 +                    table.sort(networks,function(a,b) return a.network_id < b.network_id end)
 +                    local reason
 +                    if #networks == 0 then
 +                        reason = "No readable visible own electric network in the local chart window"
-+                    elseif legacy_20 then
-+                        reason = "Factorio 2.0 historical electricity statistics only; maximum capacity, satisfaction and accumulator metrics are unavailable"
 +                    end
 +                    return {
-+                        status=#networks==0 and "unavailable"
-+                            or (legacy_20 and "partial" or "ok"),
++                        status=#networks==0 and "unavailable" or "ok",
 +                        reason=reason,
 +                        unit="joules_per_tick",tick=game.tick,networks=networks,
-+                        partial=partial or legacy_20}
++                        partial=partial}
 +                end)
 +                if power_ok and power_result then
 +                    telemetry.power = power_result

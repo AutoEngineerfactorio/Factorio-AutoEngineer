@@ -24,12 +24,16 @@ Objective navigation requires the current policy-v8 patch and a rebuild. It vali
 
 The live dashboard requires policy v8 and the bounded, read-only autoengineer_view tool. Rebuild from the current combined patch on clean pinned upstream. See [live dashboard](../docs/LIVE_DASHBOARD.md).
 
-The active development/runtime target is Factorio **2.1.23**. Version 2.1.22 is retained for rollback; 2.0.77 is an archived compatibility target. Use the new 2.1.23 launcher profile and Lua mod for current testing.
+The active development/runtime target is Factorio **2.1.23**, which is the only
+supported version. Version 2.1.22 and 2.0.77 are archived and retained only as
+rollback/historical records; they carry no active compatibility work. Use the
+2.1.23 launcher profile and Lua mod for current testing.
 The adapter reports `script.active_mods["base"]` and does not branch on a
-hard-coded game version. Its source and Python contracts cover both target
-version labels, but the pinned backend checkout is not included here and neither
-installed runtime has been accepted live. Rebuild and run the restricted patch
-against each exact game version before claiming operational compatibility.
+hard-coded game version. Its source and Python contracts cover the single
+2.1.23 target, but the pinned backend checkout is not included here and the
+installed runtime has not been accepted live. Rebuild and run the restricted
+patch against the exact 2.1.23 game build before claiming operational
+compatibility.
 
 Policy v5 adds only two closed starter-operation tools. The combined patch installs OperationService.cs and extends the guarded tick/Stop paths to bound mining and cancel unfinished owned crafting. See [verified operations](../docs/VERIFIED_OPERATIONS.md).
 

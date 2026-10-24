@@ -33,7 +33,7 @@ def intelligence(recipes, *, truncated=False, enabled_content=None):
         "schema": 1,
         "tick": 120,
         "surface": "nauvis",
-        "game_version": "2.0.77",
+        "game_version": "2.1.23",
         "force": "player",
         "research": ["automation"],
         "enabled_content": enabled_content or ["base"],
@@ -73,6 +73,15 @@ class RecipeMaterialPlannerTests(unittest.TestCase):
         ore = next(row for row in plan["unresolved"] if row["name"] == "iron-ore")
         self.assertEqual(ore["amount"], 4)
         self.assertIn("external supply/buildability is unknown", ore["reason"])
+        self.assertEqual(plan["source"], {
+            "game_version": "2.1.23",
+            "fingerprint": "poly31x131-v1:0123456789-9876543210",
+            "force": "player", "surface": "nauvis", "tick": 120,
+            "enabled_content": ["base"], "observed_research": ["automation"],
+        })
+        self.assertEqual(plan["throughput_status"], "not-computed")
+        self.assertFalse(plan["physical_buildability_verified"])
+        self.assertEqual(plan["uncertainty"], plan["unresolved"])
 
     def test_fluid_target_and_fluid_inputs_keep_distinct_units(self):
         observed = intelligence([
@@ -113,6 +122,13 @@ class RecipeMaterialPlannerTests(unittest.TestCase):
             "name": "slag",
             "amount": 1,
         }])
+        self.assertEqual(plan["coproduct_credit_policy"],
+                         "reported-only; no requirement credits applied")
+        detail = plan["selected_recipe_details"][0]
+        self.assertEqual(detail["crafting_time_seconds"], 1)
+        self.assertEqual(detail["ingredients_per_craft"], [part("ore", 1)])
+        self.assertEqual(detail["products_per_craft"],
+                         [part("plate", 1), part("slag", 0.5)])
         self.assertTrue(any("not credited" in note for note in plan["notes"]))
 
     def test_ambiguous_recipe_requires_user_choice(self):
@@ -130,6 +146,7 @@ class RecipeMaterialPlannerTests(unittest.TestCase):
         self.assertEqual(plan["unresolved"][0]["candidates"], [
             "gear-alternate", "gear-basic",
         ])
+        self.assertEqual(plan["recipe_ambiguities"], plan["unresolved"])
         self.assertEqual(selected["selected_recipes"], [
             {"recipe": "gear-alternate", "batches": 3},
         ])
@@ -145,6 +162,8 @@ class RecipeMaterialPlannerTests(unittest.TestCase):
 
         self.assertEqual(plan["status"], "unsupported")
         self.assertIn("recipe cycle:", plan["unresolved"][0]["reason"])
+        self.assertEqual(plan["unsupported_mechanics"],
+                         [plan["unresolved"][0]["reason"]])
 
     def test_disabled_recipe_is_not_reported_as_available_or_nonproducible(self):
         observed = intelligence([
@@ -157,6 +176,7 @@ class RecipeMaterialPlannerTests(unittest.TestCase):
         self.assertEqual(plan["selected_recipes"], [])
         self.assertIn("no currently enabled recipe", plan["unresolved"][0]["reason"])
         self.assertIn("locked-gear", plan["unresolved"][0]["candidates"])
+        self.assertEqual(plan["research_unlock_limitations"], plan["unresolved"])
 
     def test_planning_rejects_incomplete_or_unqualified_catalogs(self):
         incomplete = intelligence([

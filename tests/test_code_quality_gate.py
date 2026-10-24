@@ -11,6 +11,7 @@ from code_quality_gate import (
     check_syntax,
     decode_paths,
     is_sensitive_path,
+    run_full,
     run_quick,
 )
 
@@ -62,6 +63,33 @@ class QualityGateTests(unittest.TestCase):
             (root / "broken.py").write_text("def :(\n", encoding="utf-8")
             bad = run_quick(root)
             self.assertFalse(all(x.ok for x in bad))
+
+    def test_full_qa_uses_checkout_tests_without_legacy_runner(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            python = root / ".venv" / "Scripts" / "python.exe"
+            python.parent.mkdir(parents=True)
+            python.write_bytes(b"pinned interpreter placeholder")
+            self.assertFalse((root / "memory" / "test_runner.py").exists())
+            result = SimpleNamespace(returncode=0, stdout="OK", stderr="")
+            with patch("code_quality_gate.run", return_value=result) as runner:
+                gate = run_full(root, python)
+            self.assertTrue(gate.ok)
+            self.assertEqual(runner.call_count, 2)
+            commands = [call.args[0] for call in runner.call_args_list]
+            self.assertTrue(any("unittest" in argv for argv in commands))
+            self.assertTrue(any("ruff" in argv for argv in commands))
+            self.assertTrue(all("memory/test_runner.py" not in argv for argv in commands))
+
+    def test_full_qa_requires_actual_pinned_interpreter(self):
+        with tempfile.TemporaryDirectory() as dirname:
+            root = Path(dirname)
+            result = run_full(root, root / ".venv/Scripts/python.exe")
+            self.assertFalse(result.ok)
+            self.assertIn("pinned .venv", result.detail)
 
 
 if __name__ == "__main__":

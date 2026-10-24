@@ -1060,6 +1060,17 @@ class TestR06IndependentRegression(unittest.TestCase):
         self.solver.add_machine(create_machine(
             "gears", name="Fixture assembler", speed_multiplier=1.0))
 
+    @staticmethod
+    def add_quantity_contract(solver):
+        """Make synthetic per-craft values explicit for quantity-flow fixtures."""
+        for recipe in solver.recipes.values():
+            if recipe.crafting_time_seconds is None:
+                recipe.crafting_time_seconds = 1.0
+            if recipe.output_quantity_per_craft is None:
+                recipe.output_quantity_per_craft = 1.0
+            if recipe.energy_per_craft_kj is None:
+                recipe.energy_per_craft_kj = recipe.energy_usage
+
     def test_zero_input_and_zero_power_prevent_output(self):
         plan = self.solver.compute_production_plan("gears", 5, {}, 0)
         self.assertEqual(plan.achievable_rate_gps, 0)
@@ -1144,3 +1155,342 @@ class TestR06IndependentRegression(unittest.TestCase):
         proof = self.solver.get_fixture_proof("gears")
         self.assertIn("Synthetic", proof["notes"])
         self.assertIn("not gameplay proof", proof["notes"])
+
+    def test_multi_recipe_material_flow_with_byproducts(self):
+        """Test multi-recipe flow with byproduct generation and credit."""
+        # Create a simple recipe chain with byproducts
+        recipe_a = create_recipe(
+            prototype_id="a",
+            base_speed=1.0,
+            energy_usage=0.1,
+            inputs=[{"prototype_id": "x", "count": 1}],
+            byproducts=[{"prototype_id": "y", "count": 0.5}]
+        )
+        recipe_b = create_recipe(
+            prototype_id="b",
+            base_speed=1.0,
+            energy_usage=0.1,
+            inputs=[{"prototype_id": "a", "count": 1}],
+            byproducts=[{"prototype_id": "z", "count": 0.25},
+                        {"prototype_id": "x", "count": 0.25}]
+        )
+        recipe_target = create_recipe(
+            prototype_id="target",
+            base_speed=1.0,
+            energy_usage=0.1,
+            inputs=[{"prototype_id": "b", "count": 1}],
+        )
+
+        self.solver.add_recipe(recipe_a)
+        self.solver.add_recipe(recipe_b)
+        self.solver.add_recipe(recipe_target)
+        self.solver.add_recipe(create_recipe(
+            "unrelated", 1, 0.1, byproducts=[{"prototype_id": "x", "count": 99}]))
+        self.add_quantity_contract(self.solver)
+
+        result = self.solver.compute_multi_recipe_material_flow(
+            target_prototype="target",
+            target_quantity=4.0,
+            supply_available={"x": 3.0},
+            energy_available=100.0,
+        )
+
+        self.assertEqual(result["status"], "computed")
+        self.assertEqual(result["has_cycle"], False)
+        self.assertEqual(result["has_unresolved"], False)
+        self.assertEqual(result["selected_recipes"], {"target": 4, "b": 4, "a": 4})
+        self.assertEqual(result["net_material_requirements"], {"x": 3})
+        self.assertEqual(result["net_material_surplus"], {"y": 2, "z": 1})
+        self.assertIsNone(result["total_energy_required_kw"])
+        self.assertEqual(result["total_energy_required_kj"], 1.2)
+
+    def test_external_inputs_are_resolved_after_byproduct_credits(self):
+        solver = ProductionSolver()
+        solver.add_recipe(create_recipe(
+            "a", 1, 0.1, byproducts=[{"prototype_id": "raw", "count": 1}]))
+        solver.add_recipe(create_recipe(
+            "target", 1, 0.1,
+            inputs=[{"prototype_id": "a", "count": 1},
+                    {"prototype_id": "raw", "count": 1}]))
+        self.add_quantity_contract(solver)
+        result = solver.compute_multi_recipe_material_flow("target", 1, {}, 1)
+        self.assertEqual(result["status"], "computed")
+        self.assertEqual(result["unresolved"], [])
+        self.assertEqual(result["net_material_requirements"], {})
+        self.assertEqual(result["total_byproducts"], [
+            {"prototype_id": "raw", "count": 1.0, "is_byproduct": True}])
+
+    def test_partial_byproduct_credit_preserves_exact_external_shortage(self):
+        solver = ProductionSolver()
+        solver.add_recipe(create_recipe(
+            "a", 1, 0.1, byproducts=[{"prototype_id": "raw", "count": 0.25}]))
+        solver.add_recipe(create_recipe(
+            "target", 1, 0.1,
+            inputs=[{"prototype_id": "a", "count": 1},
+                    {"prototype_id": "raw", "count": 1}]))
+        self.add_quantity_contract(solver)
+        result = solver.compute_multi_recipe_material_flow(
+            "target", 1, {"raw": 0.5}, 1)
+        self.assertEqual((result["status"], result["shortages"]),
+                         ("shortage", ["raw"]))
+        self.assertEqual(result["net_material_requirements"], {"raw": 0.75})
+        self.assertEqual(result["total_byproducts"][0]["count"], 0.25)
+
+    def test_invalid_byproducts_are_rejected_at_insertion(self):
+        invalid = (float("nan"), float("inf"), float("-inf"), True, -10)
+        for count in invalid:
+            with self.subTest(count=count), self.assertRaises(ValueError):
+                self.solver.add_recipe(create_recipe(
+                    "bad", 1, 0, byproducts=[{"prototype_id": "scrap", "count": count}]))
+        for byproduct in ("malformed", {"count": 1}):
+            with self.subTest(byproduct=byproduct), self.assertRaises(ValueError):
+                self.solver.add_recipe(create_recipe(
+                    "bad", 1, 0, byproducts=[byproduct]))  # type: ignore[list-item]
+
+    def test_zero_byproduct_and_finite_inventory_contract(self):
+        self.solver.add_recipe(create_recipe(
+            "zero", 1, 0, byproducts=[{"prototype_id": "scrap", "count": 0}]))
+        self.add_quantity_contract(self.solver)
+        result = self.solver.compute_multi_recipe_material_flow("zero", 1, {}, 0)
+        self.assertEqual(result["status"], "computed")
+        self.assertEqual(result["total_byproducts"], [
+            {"prototype_id": "scrap", "count": 0.0, "is_byproduct": True}])
+        for amount in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(amount=amount):
+                invalid = self.solver.compute_multi_recipe_material_flow(
+                    "zero", 1, {"raw": amount}, 0)
+                self.assertEqual(invalid["status"], "invalid")
+
+    def test_multi_recipe_material_flow_with_cycle(self):
+        """Test that cycles are detected and marked as unsupported."""
+        # Create a cyclic recipe
+        recipe_a = create_recipe(
+            prototype_id="a",
+            base_speed=1.0,
+            energy_usage=0.1,
+            inputs=[{"prototype_id": "b", "count": 1}],
+            byproducts=[{"prototype_id": "a", "count": 1}]  # Self-referential
+        )
+        recipe_b = create_recipe(
+            prototype_id="b",
+            base_speed=1.0,
+            energy_usage=0.1,
+            inputs=[{"prototype_id": "a", "count": 1}],
+            byproducts=[{"prototype_id": "b", "count": 1}]  # Self-referential
+        )
+
+        self.solver.add_recipe(recipe_a)
+        self.solver.add_recipe(recipe_b)
+        self.add_quantity_contract(self.solver)
+
+        result = self.solver.compute_multi_recipe_material_flow(
+            target_prototype="a",
+            target_quantity=1.0,
+            supply_available={},
+            energy_available=100.0,
+        )
+
+        self.assertEqual(result["status"], "unsupported")
+        self.assertEqual(result["has_cycle"], True)
+        self.assertEqual(result["diagnostic_reason"], "cycle_detected")
+        self.assertEqual(result["cycles"], [["a", "b", "a"]])
+
+    def test_multi_recipe_material_flow_shared_inputs(self):
+        """Test that shared inputs are aggregated correctly."""
+        recipe_shared = create_recipe(
+            prototype_id="shared",
+            base_speed=1.0,
+            energy_usage=0.1,
+            inputs=[{"prototype_id": "raw", "count": 2}],
+        )
+        recipe_a = create_recipe(
+            prototype_id="a",
+            base_speed=1.0,
+            energy_usage=0.1,
+            inputs=[{"prototype_id": "shared", "count": 1}],
+        )
+        recipe_b = create_recipe(
+            prototype_id="b",
+            base_speed=1.0,
+            energy_usage=0.1,
+            inputs=[{"prototype_id": "shared", "count": 1}],
+        )
+        recipe_target = create_recipe(
+            prototype_id="target",
+            base_speed=1.0,
+            energy_usage=0.1,
+            inputs=[{"prototype_id": "a", "count": 1}, {"prototype_id": "b", "count": 1}],
+        )
+
+        self.solver.add_recipe(recipe_shared)
+        self.solver.add_recipe(recipe_a)
+        self.solver.add_recipe(recipe_b)
+        self.solver.add_recipe(recipe_target)
+        self.add_quantity_contract(self.solver)
+
+        result = self.solver.compute_multi_recipe_material_flow(
+            target_prototype="target",
+            target_quantity=2.0,
+            supply_available={"raw": 8},
+            energy_available=100.0,
+        )
+
+        self.assertEqual(result["status"], "computed")
+        self.assertEqual(result["net_material_requirements"], {"raw": 8})
+        self.assertEqual(result["selected_recipes"],
+                         {"target": 2, "a": 2, "b": 2, "shared": 4})
+        scaled = self.solver.compute_multi_recipe_material_flow(
+            "target", 20, {"raw": 80}, 100)
+        self.assertEqual(scaled["net_material_requirements"], {"raw": 80})
+
+        missing = self.solver.compute_multi_recipe_material_flow("target", 2, {}, 100)
+        short = self.solver.compute_multi_recipe_material_flow("target", 2, {"raw": 7}, 100)
+        no_power = self.solver.compute_multi_recipe_material_flow(
+            "target", 2, {"raw": 8}, 0)
+        self.assertEqual((missing["status"], missing["unresolved"][0]["name"]),
+                         ("unresolved", "raw"))
+        self.assertEqual((short["status"], short["shortages"]), ("shortage", ["raw"]))
+        self.assertEqual((no_power["status"], no_power["energy_limiting"]),
+                         ("computed", None))
+        self.assertEqual(no_power["power_feasibility"],
+                         "unknown-without-production-duration")
+
+    def test_multi_recipe_determinism_invalid_and_unsupported_boundaries(self):
+        recipes = [
+            create_recipe("target", 1, .1, inputs=[{"prototype_id": "part", "count": 2}]),
+            create_recipe("part", 7, .2, inputs=[{"prototype_id": "raw", "count": 3}],
+                          crafting_time_seconds=4, output_quantity_per_craft=2),
+        ]
+        first = ProductionSolver()
+        second = ProductionSolver()
+        for recipe in recipes:
+            first.add_recipe(recipe)
+        for recipe in reversed(recipes):
+            second.add_recipe(recipe)
+        self.add_quantity_contract(first)
+        self.add_quantity_contract(second)
+        one = first.compute_multi_recipe_material_flow("target", 2, {"raw": 6}, 100)
+        two = second.compute_multi_recipe_material_flow("target", 2, {"raw": 6}, 100)
+        self.assertEqual(one, two)
+        self.assertEqual(one["net_material_requirements"], {"raw": 6})
+        self.assertEqual(first.compute_multi_recipe_material_flow(
+            "target", True, {}, 1)["status"], "invalid")
+
+        for mechanic in ("alternative", "catalyst", "fluid"):
+            solver = ProductionSolver()
+            recipe = create_recipe("modded", 1, .1, inputs=[{"prototype_id": "raw", "count": 1}])
+            if mechanic == "alternative":
+                recipe.alternatives = [create_recipe("modded-alt", 1, .1)]
+            elif mechanic == "catalyst":
+                recipe.catalysts = ["raw"]
+            else:
+                recipe.fluid_ports = [{"name": "steam"}]
+            solver.add_recipe(recipe)
+            self.add_quantity_contract(solver)
+            result = solver.compute_multi_recipe_material_flow("modded", 1, {"raw": 1}, 1)
+            self.assertEqual(result["status"], "unsupported", mechanic)
+
+        self_cycle = ProductionSolver()
+        self_cycle.add_recipe(create_recipe(
+            "loop", 1, .1, inputs=[{"prototype_id": "loop", "count": 1}]))
+        self.add_quantity_contract(self_cycle)
+        self_result = self_cycle.compute_multi_recipe_material_flow("loop", 1, {}, 1)
+        self.assertEqual(self_result["diagnostic_reason"], "cycle_detected")
+        self.assertEqual(self_result["cycles"], [["loop", "loop"]])
+
+    def test_multi_recipe_flow_handles_required_deep_graph_sizes(self):
+        for size in (1_000, 5_000, 10_000):
+            with self.subTest(size=size):
+                solver = ProductionSolver()
+                for index in reversed(range(size)):
+                    dependency = "raw" if index == size - 1 else f"node-{index + 1}"
+                    solver.add_recipe(create_recipe(
+                        f"node-{index}", 1, 0,
+                        inputs=[{"prototype_id": dependency, "count": 1}]))
+                self.add_quantity_contract(solver)
+                result = solver.compute_multi_recipe_material_flow(
+                    "node-0", 1, {"raw": 1}, 0)
+                self.assertEqual(result["status"], "computed")
+                self.assertEqual(len(result["selected_recipes"]), size)
+                self.assertEqual(result["net_material_requirements"], {"raw": 1.0})
+                self.assertEqual(result["total_energy_required_kj"], 0.0)
+
+    def test_multi_recipe_flow_handles_deep_shared_dependency(self):
+        solver = ProductionSolver()
+        depth = 1_000
+        for index in reversed(range(depth)):
+            dependency = "raw" if index == depth - 1 else f"shared-{index + 1}"
+            solver.add_recipe(create_recipe(
+                f"shared-{index}", 1, 0,
+                inputs=[{"prototype_id": dependency, "count": 1}]))
+        for branch in ("a", "b"):
+            solver.add_recipe(create_recipe(
+                branch, 1, 0, inputs=[{"prototype_id": "shared-0", "count": 1}]))
+        solver.add_recipe(create_recipe(
+            "target", 1, 0,
+            inputs=[{"prototype_id": "a", "count": 1},
+                    {"prototype_id": "b", "count": 1}]))
+        self.add_quantity_contract(solver)
+        result = solver.compute_multi_recipe_material_flow(
+            "target", 1, {"raw": 2}, 0)
+        self.assertEqual(result["status"], "computed")
+        self.assertEqual(result["net_material_requirements"], {"raw": 2.0})
+        self.assertEqual(len(result["selected_recipes"]), depth + 3)
+        self.assertEqual(result["selected_recipes"]["shared-999"], 2.0)
+
+    def test_multi_recipe_flow_reports_deterministic_long_cycle(self):
+        solver = ProductionSolver()
+        size = 100
+        for index in reversed(range(size)):
+            dependency = f"node-{(index + 1) % size}"
+            solver.add_recipe(create_recipe(
+                f"node-{index}", 1, 0,
+                inputs=[{"prototype_id": dependency, "count": 1}]))
+        self.add_quantity_contract(solver)
+        result = solver.compute_multi_recipe_material_flow("node-0", 1, {}, 0)
+        self.assertEqual(result["status"], "unsupported")
+        self.assertEqual(result["diagnostic_reason"], "cycle_detected")
+        self.assertEqual(result["cycles"], [
+            [f"node-{index}" for index in range(size)] + ["node-0"]])
+
+    def test_multi_recipe_flow_rejects_nonfinite_arithmetic_results(self):
+        recipes = (
+            create_recipe("input-overflow", 1, 0,
+                          inputs=[{"prototype_id": "raw", "count": 1e308}]),
+            create_recipe("byproduct-overflow", 1, 0,
+                          byproducts=[{"prototype_id": "scrap", "count": 1e308}]),
+            create_recipe("energy-overflow", 1, 1e308),
+        )
+        for recipe in recipes:
+            with self.subTest(recipe=recipe.prototype_id):
+                solver = ProductionSolver()
+                solver.add_recipe(recipe)
+                self.add_quantity_contract(solver)
+                result = solver.compute_multi_recipe_material_flow(
+                    recipe.prototype_id, 1e308, {}, 1e308)
+                self.assertEqual(result["status"], "invalid")
+                self.assertEqual(result["diagnostic_reason"], "arithmetic_overflow")
+                self.assertEqual(result["net_material_requirements"], {})
+                self.assertEqual(result["total_byproducts"], [])
+
+    def test_multi_recipe_flow_rejects_excessive_reachable_graph(self):
+        solver = ProductionSolver()
+        solver.MAX_MATERIAL_FLOW_RECIPES = 2
+        for index in reversed(range(3)):
+            dependency = "raw" if index == 2 else f"node-{index + 1}"
+            solver.add_recipe(create_recipe(
+                f"node-{index}", 1, 0,
+                inputs=[{"prototype_id": dependency, "count": 1}]))
+        self.add_quantity_contract(solver)
+        result = solver.compute_multi_recipe_material_flow("node-0", 1, {}, 0)
+        self.assertEqual(result["status"], "unsupported")
+        self.assertEqual(result["diagnostic_reason"], "graph_too_large")
+        self.assertEqual(result["selected_recipes"], {})
+
+    def test_quantity_flow_requires_explicit_output_per_craft(self):
+        solver = ProductionSolver()
+        solver.add_recipe(create_recipe("ambiguous", 9, 0.2))
+        result = solver.compute_multi_recipe_material_flow("ambiguous", 3, {}, 100)
+        self.assertEqual(result["status"], "unsupported")
+        self.assertEqual(result["diagnostic_reason"],
+                         "missing_output_quantity_per_craft")

@@ -18,7 +18,7 @@ from pathlib import Path
 from tkinter import messagebox, scrolledtext, ttk
 
 from app_runtime import component_command
-from dashboard_feed import PREFIX, parse_frame
+from dashboard_feed import PREFIX, command_help, encode_viewport_request, parse_frame
 from dashboard_view import LiveView
 from factorio_theme import AMBER, INSET, TEXT, apply_theme
 from mode_policy import FULL, HELPER, LABELS, SEMI
@@ -32,13 +32,49 @@ from verified_operations import validate_operation
 AGENT = Path(__file__).resolve().parent / "supervised_agent.py"
 
 
+def catalog_notice(frame, intelligence):
+    """Explain observed catalog deficiencies without qualifying partial planning."""
+    if intelligence.get("planner_ready"):
+        return "qualified catalog observed; production estimates are not measured"
+    if not isinstance(frame, dict) or frame.get("status") != "ok":
+        return "observation unavailable; planning disabled"
+    status = frame.get("catalog_status")
+    caps = frame.get("capabilities")
+    reason = str(intelligence.get("reason", "catalog unavailable"))
+    if isinstance(status, dict):
+        if status.get("status") == "assembly_failed":
+            return "recipe pages could not be assembled consistently; planning disabled"
+        if status.get("status") == "ok" and isinstance(caps, dict):
+            rows = caps.get("recipes")
+            page_size = status.get("page_size")
+            page = status.get("page")
+            total = status.get("total_count")
+            if (
+                isinstance(rows, list)
+                and isinstance(page, int)
+                and isinstance(page_size, int)
+                and isinstance(total, int)
+                and page_size > 0
+            ):
+                remaining = max(0, total - (page - 1) * page_size)
+                expected_rows = min(page_size, remaining)
+                if caps.get("truncated") or len(rows) < expected_rows:
+                    return (
+                        f"incomplete catalog: page {page}, {len(rows)}/{page_size} rows; "
+                        f"{total} total declared. Planning disabled"
+                    )
+    return reason
+
+
 class Dashboard:
     def __init__(self, root):
         self.root = root
         apply_theme(root)
         root.title("Factorio AutoEngineer | Supervised Control")
-        root.geometry("1480x960")
-        root.minsize(1240, 820)
+        # Map-first: the dashboard opens on a wide window so the live map is
+        # the dominant surface, with the mission-control side column beside it.
+        root.geometry("1920x1080")
+        root.minsize(1280, 800)
         self.manual_control = False
         self.takeover_started = 0
         self.current_mode = HELPER
@@ -113,7 +149,9 @@ class Dashboard:
         workspace = ttk.Panedwindow(self.root, orient="horizontal")
         workspace.pack(fill="both", expand=True, padx=20, pady=(0, 10))
         tabs = ttk.Notebook(workspace)
-        workspace.add(tabs, weight=5)
+        # The map tab gets the dominant share of the window; the mission
+        # control column keeps a fixed, compact width.
+        workspace.add(tabs, weight=9)
         self.live_view = LiveView(tabs)
         tabs.add(self.live_view, text="SURFACE & INVENTORY")
         self.planning_view = RecipeResearchView(tabs)
@@ -222,7 +260,11 @@ class Dashboard:
         self.resume_button.pack(fill="x", pady=4)
         ttk.Label(
             side,
-            text="Escape stops the active session.\nFresh approval per action.\nFive-tile movement limit.",
+            text=(
+                "Escape stops the active session.\nFresh approval per action.\n"
+                "Five-tile movement limit.\n\n"
+                + command_help()
+            ),
             style="Muted.TLabel",
             wraplength=290,
         ).pack(anchor="w", pady=10)
@@ -327,15 +369,21 @@ class Dashboard:
                 self.position.set(f"{frame['position']['x']:.2f}, {frame['position']['y']:.2f}")
             intelligence = self.planning_session.observe(frame)
             self.planning_view.update_intelligence(intelligence)
-            if intelligence["planner_ready"]:
-                self.planner_note.set(
-                    "R04-R06: qualified catalog observed; production estimates are not measured"
-                )
-            else:
-                self.planner_note.set("R04-R06: " + str(intelligence["reason"]))
+            self.planner_note.set("R04-R06: " + catalog_notice(frame, intelligence))
             self.live_view.update_frame(frame)
+            # Ask for the chunks the map currently shows, so a panned or
+            # zoomed viewport is observed and not only the player's chunk.
+            self.live_view.request_viewport()
             self.telemetry_view.update_frame(frame)
         except (ValueError, TypeError, KeyError, AttributeError):
+            import traceback as _tb
+            try:
+                from pathlib import Path as _P
+                _P(r"D:\AI\Factorio-AutoEngineer-Source\.local\scratch\r08d_dash_error.txt").write_text(
+                    _tb.format_exc(), encoding="utf-8"
+                )
+            except Exception:
+                pass
             self.planning_view.update_intelligence({
                 "status": "unavailable",
                 "planner_ready": False,
@@ -367,10 +415,26 @@ class Dashboard:
                 ),
                 startupinfo=startup,
             )
+            # The map asks the observer to observe the chunks it shows. The
+            # request is advisory and read-only.
+            setattr(self.live_view, "viewport_sender", self.send_viewport)
             threading.Thread(target=self.read_output, args=(self.observer,), daemon=True).start()
         except OSError:
             self.live_view.update_frame({"status": "unavailable"})
             self.root.after(3000, self.start_observer)
+
+    def send_viewport(self, center_x, center_y, radius_x, radius_y):
+        """Ask the observer to observe the chunks the map currently shows."""
+        process = self.observer
+        if process is None or process.stdin is None or process.poll() is not None:
+            return
+        line = encode_viewport_request(center_x, center_y, radius_x, radius_y)
+        try:
+            process.stdin.write(line + "\n")
+            process.stdin.flush()
+        except (OSError, ValueError):
+            # A closed control channel must not break the map.
+            self.live_view.viewport_sender = None
 
     def close_display(self):
         self.closing = True
@@ -524,6 +588,13 @@ class Dashboard:
                     buffer = ""
                 elif ch == "\n":
                     self.q.put((proc, "line", buffer))
+                    try:
+                        from pathlib import Path as _P
+                        _P(r"D:\AI\Factorio-AutoEngineer-Source\.local\scratch\r08d_dash_reader.txt").open(
+                            "a", encoding="utf-8"
+                        ).write(f"LINE len={len(buffer)} head={buffer[:80]!r}\n")
+                    except Exception:
+                        pass
                     buffer = ""
                 elif len(buffer) > 1048576:
                     self.q.put((proc, "line", buffer))

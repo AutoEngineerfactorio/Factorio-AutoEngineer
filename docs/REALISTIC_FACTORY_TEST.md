@@ -9,7 +9,7 @@ Validate AutoEngineer on **every supported producible output**, including items,
 Use three distinct evidence levels. The first two are offline-only, not actual Factorio gameplay:
 
 1. **Offline rehearsal (implemented):** agent/factory_reality_test.py checks a game-like 10-minute series of cumulative produced/consumed statistics, item/fluid identities, optional item quality, configurable output targets and independently supplied predicted rates. It computes exact rolling in-game 1/5/10-minute windows from ticks, detects shortages, power-satisfaction dips, missing observations, counters resetting, invalid schemas, wrong units, duplicate products and unsupported evidence. It has no game connection, no blueprint construction, no model call, no recipe physics engine, and no cheats. The included example is intentionally synthetic, with a two-minute underproduction episode; it is not a physically simulated machine network.
-2. **Constrained offline chain (implemented):** agent/factory_chain_simulation.py models one fixed 2.0.77 ordinary-recipe flow with 21 electric iron furnaces, 8 electric copper furnaces, 4 gear assemblers, 2 circuit assemblers, 3 cable assemblers, 13 iron ore/s and 4.5 copper ore/s external supply, shared plate/cable material flow and finite transport/power factors. It produces game-tick-aligned synthetic counters for six outputs with a 5:00–7:00 shortage. It is a steady-state math model: no actual belts, inserter cycles, mining, machine buffers, electric-network dynamics or live game.
+2. **Constrained offline chain (implemented):** agent/factory_chain_simulation.py models one fixed 2.1.23 ordinary-recipe flow with 21 electric iron furnaces, 8 electric copper furnaces, 4 gear assemblers, 2 circuit assemblers, 3 cable assemblers, 13 iron ore/s and 4.5 copper ore/s external supply, shared plate/cable material flow and finite transport/power factors. It produces game-tick-aligned synthetic counters for six outputs with a 5:00–7:00 shortage. It is a steady-state math model: no actual belts, inserter cycles, mining, machine buffers, electric-network dynamics or live game.
 3. **Approved live test (NOT IMPLEMENTED/RUN):** collect read-only production counters from a distinct, disposable game save in the exact pinned Factorio build. Capture force+surface+version/content/research/prototype fingerprint with timestamps and selected output keys, compare predicted versus observed output, then verify physical factory state and safety against user-approved fault scenarios. Never connect to main saves or an unspecified running process.
 
 ## Safe offline example
@@ -35,7 +35,7 @@ Input JSON file (size at most 5 MB), shape:
       "schema": 1,
       "evidence": "external_capture_unverified",
       "profile": {
-        "game_version": "2.0.77", "force": "player", "surface": "nauvis",
+        "game_version": "2.1.23", "force": "player", "surface": "nauvis",
         "content": ["base"], "tick_rate": 60
       },
       "targets": [
@@ -74,7 +74,7 @@ For Factorio's item and fluid production GUI, production is displayed as the **i
 - https://lua-api.factorio.com/latest/classes/LuaFlowStatistics.html
 - https://lua-api.factorio.com/latest/classes/LuaForce.html
 
-The Factorio 2.0 version history confirms LuaForce.get_item_production_statistics(surface) and get_fluid_production_statistics(surface); documented LuaFlowStatistics.get_input_count(id) and get_output_count(id) are the applicable production/consumption totals. The online API currently describes 2.1.x and marks certain quality-specific statistics APIs as new: do not assume those APIs exist in installed 2.0.77. Verify each variant and quality read against the exact game build before enabling the live collector. The official data examples also identify input_counts as produced and output_counts as consumed. Output count here is **consumption**, not the manufactured output count. This avoids an otherwise serious measurement reversal.
+Factorio 2.1.23 confirms LuaForce.get_item_production_statistics(surface) and get_fluid_production_statistics(surface); documented LuaFlowStatistics.get_input_count(id) and get_output_count(id) are the applicable production/consumption totals. Certain quality-specific statistics APIs are newer: do not assume they exist in the installed 2.1.23 build without checking its own runtime API. Verify each variant and quality read against the exact game build before enabling the live collector. The official data examples also identify input_counts as produced and output_counts as consumed. Output count here is **consumption**, not the manufactured output count. This avoids an otherwise serious measurement reversal.
 
 Flow statistics are usually force+surface aggregated, not a machine-level bill of materials. Use a dedicated isolated factory/test force and surface where supported; otherwise other machines and manual crafting may contaminate measurements. Use real prototype/research information to identify what is legal to build. Factorio's statistics may exclude amounts with ignored_by_stats: statistics measure the GUI's counted production, not an infallible full material-conservation proof.
 

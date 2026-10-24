@@ -5,13 +5,14 @@ import json
 import math
 from types import MappingProxyType
 
+from dashboard_chunk_grid import validate_chunk_request
 from mode_policy import ModePolicy
 from verified_operations import validate_operation
 
 ALLOWED = {
     "autoengineer_operation_preview": {"kind", "name", "count"},
     "autoengineer_operation": {"kind", "name", "count", "safetyOwner", "targetX", "targetY"},
-    "autoengineer_view": {"catalogPage", "catalogPageSize"},
+    "autoengineer_view": {"catalogPage", "catalogPageSize", "mapChunkX", "mapChunkY"},
     "autoengineer_policy": set(),
     "get_player_position": set(),
     "scan_resources": {"radius"},
@@ -87,6 +88,16 @@ class DispatchBoundary:
                 raise ValueError("Invalid catalog page")
             if type(page_size) is not int or not 1 <= page_size <= 32:
                 raise ValueError("Invalid catalog page size")
+            # Optional read-only map chunk selection. Both coordinates must be
+            # given together and each must be a bounded integer chunk index.
+            # The backend only ever reads the world; it never charts, generates
+            # or selects anything.
+            chunk_x = args.get("mapChunkX")
+            chunk_y = args.get("mapChunkY")
+            if (chunk_x is None) != (chunk_y is None):
+                raise ValueError("Map chunk coordinates must be given together")
+            if chunk_x is not None:
+                validate_chunk_request((chunk_x, chunk_y))
         self.policy.authorize(name)
         if name in {"walk_to_position", "autoengineer_operation"}:
             permit, self._permit = self._permit, None

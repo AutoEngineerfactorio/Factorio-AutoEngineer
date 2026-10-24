@@ -2,6 +2,11 @@
 
 Installed API checks are skipped on systems without this isolated Factorio build.
 This does not claim all R05 telemetry acceptance has been rerun on 2.1.23.
+
+The offline API archive under ``.local/factorio-api-offline/2.1.23/files`` is the
+authoritative local reference for the supported target. It is copied verbatim from
+the verified 2.1.23 installation, so its machine-readable definitions must agree
+with the installed ``doc-html`` whenever both are present.
 """
 import json
 import unittest
@@ -10,7 +15,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MOD = ROOT / "factorio-mod" / "autoengineer-input_2.1.23"
 EXE = Path(r"D:\AI\Factorio-Isolated-2.1.23\Factorio_2.1.22\bin\x64\factorio.exe")
-API = EXE.parents[2] / "doc-html" / "runtime-api.json"
+INSTALLED = EXE.parents[2] / "doc-html"
+API = INSTALLED / "runtime-api.json"
+PROTOTYPE_API = INSTALLED / "prototype-api.json"
+OFFLINE_API = ROOT / ".local" / "factorio-api-offline" / "2.1.23" / "files"
+OFFLINE_RUNTIME = OFFLINE_API / "runtime-api.json"
+OFFLINE_PROTOTYPE = OFFLINE_API / "prototype-api.json"
+OFFLINE_INDEX = OFFLINE_API / "index.html"
+OFFLINE_LICENSE = OFFLINE_API / "license.html"
 
 
 class Factorio2123LuaAPI(unittest.TestCase):
@@ -62,6 +74,60 @@ class Factorio2123LuaAPI(unittest.TestCase):
             "hide_health_bars",
             {p["name"] for p in capture["parameters"]},
         )
+
+
+class Factorio2123OfflineAPIArchive(unittest.TestCase):
+    """The supported offline reference must be the exact 2.1.23 API.
+
+    These assertions fail closed: if the archive is missing, truncated, or
+    declares another version, the test fails rather than silently skipping, so a
+    stale 2.1.22 or 2.0.77 archive can never be mistaken for the current API.
+    """
+
+    def test_offline_archive_declares_2_1_23(self):
+        for path, stage in (
+            (OFFLINE_RUNTIME, "runtime"),
+            (OFFLINE_PROTOTYPE, "prototype"),
+        ):
+            with self.subTest(stage=stage):
+                self.assertTrue(path.is_file(), f"missing offline {stage} API: {path}")
+                spec = json.loads(path.read_text(encoding="utf8"))
+                self.assertEqual(spec["application"], "factorio")
+                self.assertEqual(spec["application_version"], "2.1.23")
+                self.assertEqual(spec["stage"], stage)
+
+    def test_offline_archive_contains_classes_events_and_prototypes(self):
+        runtime = json.loads(OFFLINE_RUNTIME.read_text(encoding="utf8"))
+        self.assertGreater(len(runtime["classes"]), 100)
+        self.assertGreater(len(runtime["events"]), 100)
+        prototype = json.loads(OFFLINE_PROTOTYPE.read_text(encoding="utf8"))
+        self.assertGreater(len(prototype["prototypes"]), 100)
+        self.assertGreater(len(prototype["types"]), 100)
+
+    def test_offline_archive_html_declares_version(self):
+        self.assertTrue(OFFLINE_INDEX.is_file())
+        index = OFFLINE_INDEX.read_text(encoding="utf-8")
+        self.assertIn("2.1.23", index)
+
+    def test_offline_archive_preserves_upstream_license(self):
+        self.assertTrue(OFFLINE_LICENSE.is_file())
+        license_text = OFFLINE_LICENSE.read_text(encoding="utf-8")
+        self.assertIn("Wube", license_text)
+        self.assertIn("Copyright", license_text)
+
+    def test_offline_archive_matches_installed_api_when_both_present(self):
+        if not API.is_file():
+            self.skipTest("installed 2.1.23 API unavailable; archive alone verified")
+        for offline, installed in (
+            (OFFLINE_RUNTIME, INSTALLED / "runtime-api.json"),
+            (OFFLINE_PROTOTYPE, PROTOTYPE_API),
+        ):
+            with self.subTest(file=offline.name):
+                self.assertEqual(
+                    offline.read_bytes(),
+                    installed.read_bytes(),
+                    "offline archive drifted from the installed 2.1.23 API",
+                )
 
 
 if __name__ == "__main__":

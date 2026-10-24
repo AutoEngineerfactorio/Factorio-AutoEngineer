@@ -233,7 +233,7 @@ def make_demo_trace() -> dict:
     return {
         "schema": 1,
         "evidence": "synthetic_fixture",
-        "profile": {"game_version": "2.0.77", "force": "player", "surface": "nauvis",
+        "profile": {"game_version": "2.1.23", "force": "player", "surface": "nauvis",
                     "content": ["base"], "tick_rate": TICKS_PER_SECOND},
         "targets": targets,
         "samples": samples,

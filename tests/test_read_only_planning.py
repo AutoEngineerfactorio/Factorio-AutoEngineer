@@ -27,7 +27,7 @@ def frame():
 
 def caps():
     return {
-        "schema": 1, "tick": 120, "surface": "nauvis", "game_version": "2.0.77",
+        "schema": 1, "tick": 120, "surface": "nauvis", "game_version": "2.1.23",
         "force": "player", "research": ["automation"], "enabled_content": ["base"],
         "truncated": False,
         "source_fingerprint": "poly31x131-v1:0123456789-9876543210",
@@ -195,6 +195,55 @@ class ReadOnlyObservations(unittest.TestCase):
                     dict(caps(), recipes=[dict(recipe, unlock_technologies=unlocks)]),
                     "nauvis", 120,
                 )
+
+    def test_factorio_21_category_list_and_determinism_marker_are_bounded(self):
+        """Factorio 2.1 recipes may declare several categories and a stochastic
+        product amount. Both are accepted with strict bounds; unknown fields
+        still fail closed."""
+        recipe = dict(caps()["recipes"][0])
+        recipe["categories"] = ["crafting", "electromagnetics"]
+        parsed = validate_capabilities(
+            dict(caps(), recipes=[recipe]), "nauvis", 120
+        )
+        self.assertEqual(
+            parsed["recipes"][0]["categories"], ["crafting", "electromagnetics"]
+        )
+
+        stochastic = dict(recipe)
+        stochastic["products"] = [
+            dict(recipe["products"][0], deterministic=False),
+        ]
+        parsed = validate_capabilities(
+            dict(caps(), recipes=[stochastic]), "nauvis", 120
+        )
+        self.assertIs(parsed["recipes"][0]["products"][0]["deterministic"], False)
+
+        # The category list must agree with the primary category.
+        with self.assertRaises(ValueError):
+            validate_capabilities(
+                dict(caps(), recipes=[dict(recipe, categories=["other"])]),
+                "nauvis", 120,
+            )
+        # An unbounded or duplicated category list is rejected.
+        for categories in ([], ["crafting"] * 9, ["crafting", "crafting"], 12):
+            with self.subTest(categories=categories), self.assertRaises(ValueError):
+                validate_capabilities(
+                    dict(caps(), recipes=[dict(recipe, categories=categories)]),
+                    "nauvis", 120,
+                )
+        # A non-boolean determinism marker is rejected.
+        with self.assertRaises(ValueError):
+            validate_capabilities(
+                dict(caps(), recipes=[dict(
+                    recipe, products=[dict(recipe["products"][0], deterministic=1)]
+                )]),
+                "nauvis", 120,
+            )
+        # An unrelated unknown field still fails closed.
+        with self.assertRaises(ValueError):
+            validate_capabilities(
+                dict(caps(), recipes=[dict(recipe, unexpected="x")]), "nauvis", 120,
+            )
 
     def test_physical_preview_requires_explicit_observed_rates(self):
         data = validate_capabilities(caps(), "nauvis", 120)

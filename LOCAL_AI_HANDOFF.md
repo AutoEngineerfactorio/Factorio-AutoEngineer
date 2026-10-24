@@ -1,5 +1,5 @@
 # AutoEngineer local coding assistant handoff
-**Current Factorio target, October 20 2026:** 2.1.23 is active, using .local/launcher-profiles/2.1.23/launcher.local.json and factorio-mod/autoengineer-input_2.1.23. The portable directory retains Factorio_2.1.22 in its name, but the executable is verified 2.1.23. Use .local/live-pillow-2.1.23 for new tests and keep historical 2.1.22/2.0.77 profiles/evidence unchanged. The 2.1.23 Lua mod-load test passed; roadmap R05/Phase 1A live acceptance is still pending.
+**Current Factorio target, October 20 2026:** **Factorio 2.1.23 is the only supported development and testing version.** Use .local/launcher-profiles/2.1.23/launcher.local.json and factorio-mod/autoengineer-input_2.1.23. The portable directory retains Factorio_2.1.22 in its name, but the executable is verified 2.1.23. Use .local/live-pillow-2.1.23 for new tests. The archived 2.1.22 and 2.0.77 installations, profiles and evidence are preserved unchanged for rollback/history only and carry no further development or testing work; do not migrate or overwrite them. The 2.1.23 Lua mod-load test passed; roadmap R05/Phase 1A live acceptance is still pending. Future game-version upgrades require a deliberate compatibility review rather than automatic assumptions.
 
 Work only in this sanitized foundation copy. Read docs/PLANNING_REQUIREMENTS.md and ROADMAP.md first. Documents describe requirements; they do not authorize uploading, publishing, changing licenses, or operating the game.
 
@@ -12,7 +12,9 @@ Current focus: R04 capability/observation truth, R05 mechanics-ledger and read-o
 - Use only the established isolated test save. Never operate other saves or silently approve gameplay.
 - Never access private configuration, credentials, saves, logs or downloaded model weights. Never upload or publish. Keep MIT and backend attribution unchanged.
 
-Useful files: agent/dispatch_boundary.py, agent/session_safety.py, agent/autoengineer_dashboard.py, agent/job_journal.py, agent/launcher_services.py, tests/test_job_journal.py, tests/test_takeover.py, factorio-mod/.
+Useful files: agent/dispatch_boundary.py, agent/session_safety.py, agent/autoengineer_dashboard.py, agent/job_journal.py, agent/launcher_services.py, agent/factorio_api_2123.py, tests/test_job_journal.py, tests/test_takeover.py, factorio-mod/.
+
+API reference library: `.local/factorio-api-offline/2.1.23/files/` is a verbatim copy of the verified 2.1.23 installation's `doc-html`; its runtime/prototype JSON declare `application_version` 2.1.23 and the upstream Wube license is preserved. The 2.0.77 and 2.1.22 archives are historical only. Use `agent/factorio_api_2123.py` to look up an exact 2.1.23 signature before editing Lua; it fails closed with `UnknownApiError` for any name absent from 2.1.23. See docs/OFFLINE_FACTORIO_API.md, docs/FACTORIO_API_INDEX_2123.md and docs/LUA_DIAGNOSTICS_2123.md.
 
 Start with one narrow task: review a named function, explain a suspected bug, or propose an offline test. State file and evidence. Do not invent a bug when none is demonstrated. Ask before changing files or running commands. Treat generated changes as untrusted until reviewed and tested. Do not declare roadmap gates complete based on model output.
 

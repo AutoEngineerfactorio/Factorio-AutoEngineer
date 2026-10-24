@@ -202,7 +202,7 @@ class TelemetryView(ttk.Frame):
                 if selected["history_available"]:
                     from production_telemetry import format_power
                     self.power_status.set(
-                        f"Network {selected['network_id']} | Factorio 2.0 historical "
+                        f"Network {selected['network_id']} | archived historical "
                         f"electricity input {format_power(selected['observed_input'] * 60)} "
                         f"/ output {format_power(selected['observed_output'] * 60)} "
                         f"(1-minute precision, measured average) | "
@@ -211,7 +211,7 @@ class TelemetryView(ttk.Frame):
                 else:
                     self.power_status.set(
                         f"Network {selected['network_id']} visible | "
-                        "Factorio 2.0 historical electricity flow not recorded yet; "
+                        "archived historical electricity flow not recorded yet; "
                         "capacity, consumption satisfaction and stored energy unknown"
                     )
             else:
@@ -328,7 +328,7 @@ class TelemetryView(ttk.Frame):
             reason = "Power telemetry unavailable"
             if (self.model and self.model["networks"]
                     and self.model["networks"][0].get("source") == "legacy_statistics"):
-                reason = "Visible Factorio 2.0 electric network; historical flow not yet recorded"
+                reason = "Visible archived electric network; historical flow not yet recorded"
             self._draw_lines(self.power_canvas, [], "", reason)
             return
         network_id = int(network_text.get())

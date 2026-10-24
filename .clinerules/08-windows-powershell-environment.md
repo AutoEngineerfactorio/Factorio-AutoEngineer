@@ -18,8 +18,8 @@ This project is developed on **Windows 11**, with **PowerShell** as the default 
 ## Known workspace and tooling paths
 - Repository: `D:\AI\Factorio-AutoEngineer-Source`
 - Project rules: `.clinerules/`; offline reference instructions: `docs/OFFLINE_FACTORIO_API.md`
-- API docs: `.local/factorio-api-offline/2.0.77/files/` and `.local/factorio-api-offline/2.1.22/files/`
-- Launcher profiles: `.local/launcher-profiles/<version>/launcher.local.json`; keep **exactly two persistent test saves**
+- API docs: `.local/factorio-api-offline/2.1.23/files/` (supported); `2.0.77/files/` and `2.1.22/files/` are archived
+- Launcher profiles: `.local/launcher-profiles/<version>/launcher.local.json`; keep **exactly the existing persistent test saves** (2.1.23 supported, 2.0.77 and 2.1.22 archived) and create no new one
 - Python interpreter: `C:\Users\porte\AppData\Local\Programs\Python\Python312\python.exe`, unless `.vscode/settings.json` has been updated after verification
 - LuaLS is installed as the `sumneko.lua` VS Code extension. A missing `lua-language-server` executable on PATH does **not** establish a missing or broken extension. Check the installed extension location once, if necessary.
 

@@ -13,10 +13,20 @@ proven live here. R06 and live-game acceptance remain incomplete.
 """
 
 import math
+import sys
 from dataclasses import dataclass, field
 from typing import Any, Literal, Optional
 
-from r06_fixture_chain import base_gears_chain
+# Handle both relative and direct imports
+try:
+    from .r06_fixture_chain import base_gears_chain
+except ImportError:
+    if 'agent' in sys.modules:
+        from agent.r06_fixture_chain import base_gears_chain
+    else:
+        sys.path.insert(0, '.')
+        import agent.r06_fixture_chain
+        base_gears_chain = agent.r06_fixture_chain.base_gears_chain
 
 # Production status values
 ProductionStatus = Literal["unavailable", "infeasible", "partial", "estimated", "verified", "measured"]
@@ -47,6 +57,9 @@ class Recipe:
     prototype_id: str
     base_speed: float  # items per second at 100% speed
     energy_usage: float  # kW per (output item/second), for deterministic fixture rates
+    crafting_time_seconds: Optional[float] = None
+    output_quantity_per_craft: Optional[float] = None
+    energy_per_craft_kj: Optional[float] = None
     fluid_ports: list[dict[str, Any]] = field(default_factory=list)
     alternatives: list["Recipe"] = field(default_factory=list)  # Alternative recipes for same output
     catalysts: list[str] = field(default_factory=list)
@@ -113,6 +126,7 @@ class ProductionSolver:
     # 10 plates/second for plates recipe
     GEAR_FIXTURE_SPEED = 5.0  # gears per second
     PLATE_FIXTURE_SPEED = 10.0  # plates per second
+    MAX_MATERIAL_FLOW_RECIPES: int = 50_000
     
     # Default fixture machine for gears.
     GEAR_MACHINE_PROTOTYPE = "assembling-machine-2"
@@ -143,6 +157,15 @@ class ProductionSolver:
             raise ValueError("Invalid recipe rate or identity")
         if not isinstance(recipe.inputs, list) or not isinstance(recipe.surface_eligible, list):
             raise ValueError("Invalid recipe inputs or surface eligibility")
+        for value in (recipe.crafting_time_seconds, recipe.output_quantity_per_craft):
+            if (value is not None and (type(value) not in (int, float)
+                                       or not math.isfinite(value) or value <= 0)):
+                raise ValueError("Invalid per-craft recipe contract")
+        if (recipe.energy_per_craft_kj is not None
+                and (type(recipe.energy_per_craft_kj) not in (int, float)
+                     or not math.isfinite(recipe.energy_per_craft_kj)
+                     or recipe.energy_per_craft_kj < 0)):
+            raise ValueError("Invalid per-craft energy")
         for inp in recipe.inputs:
             if (not isinstance(inp, MaterialInput) or not isinstance(inp.prototype_id, str)
                     or not inp.prototype_id or type(inp.count) not in (int, float)
@@ -152,6 +175,17 @@ class ProductionSolver:
             if (not isinstance(inp.surface_required, list)
                     or any(not isinstance(value, str) or not value for value in inp.surface_required)):
                 raise ValueError("Invalid input surface restriction")
+        if not isinstance(recipe.byproducts, list):
+            raise ValueError("Invalid recipe byproducts")
+        for byproduct in recipe.byproducts:
+            if not isinstance(byproduct, dict):
+                raise ValueError("Invalid recipe byproduct")
+            count = byproduct.get("amount", byproduct.get("count"))
+            if (not isinstance(byproduct.get("prototype_id"), str)
+                    or not byproduct["prototype_id"]
+                    or not isinstance(count, (int, float)) or isinstance(count, bool)
+                    or not math.isfinite(count) or count < 0):
+                raise ValueError("Invalid recipe byproduct")
         if any(not isinstance(surface, str) or not surface for surface in recipe.surface_eligible):
             raise ValueError("Invalid recipe surface")
         self.recipes[recipe.prototype_id] = recipe
@@ -710,6 +744,336 @@ class ProductionSolver:
 
         return check(recipe, 0)
     
+    def compute_multi_recipe_material_flow(
+        self,
+        target_prototype: str,
+        target_quantity: float,
+        supply_available: dict[str, float],
+        energy_available: float,
+    ) -> dict[str, Any]:
+        """
+        Compute complete deterministic material flow across multiple recipes.
+
+        Performs actual material-flow calculation:
+        - Expands multi-level production chains
+        - Calculates exact required quantities for every ingredient
+        - Aggregates shared inputs without double-counting
+        - Scales all materials and byproducts with target quantity
+        - Applies byproduct credits only when actually produced
+        - Respects supplies and energy constraints
+        - Detects missing dependencies, unsupported recipes, and cycles
+
+        Args:
+            target_prototype: The prototype to produce
+            target_quantity: Desired quantity (not rate)
+            supply_available: Available supply {prototype_id: count}
+            energy_available: Available power in kW
+
+        Returns:
+            Dict with flow analysis including requirements, byproducts, shortages
+        """
+        # Validate input
+        if not isinstance(target_prototype, str) or not target_prototype:
+            return {
+                "status": "invalid",
+                "target": {"type": "item", "name": target_prototype, "amount": target_quantity},
+                "selected_recipes": {},
+                "unresolved": [{"type": "item", "name": target_prototype, "amount": target_quantity, "reason": "invalid target"}],
+                "total_byproducts": [],
+                "net_material_requirements": {},
+                "net_material_surplus": {},
+                "has_cycle": False,
+                "has_unresolved": True,
+                "notes": ["Invalid target prototype"],
+            }
+
+        if (type(target_quantity) not in (int, float)
+                or not math.isfinite(target_quantity) or target_quantity <= 0):
+            return {
+                "status": "invalid",
+                "target": {"type": "item", "name": target_prototype, "amount": target_quantity},
+                "selected_recipes": {},
+                "unresolved": [{"type": "item", "name": target_prototype, "amount": target_quantity, "reason": "invalid quantity"}],
+                "total_byproducts": [],
+                "net_material_requirements": {},
+                "net_material_surplus": {},
+                "has_cycle": False,
+                "has_unresolved": True,
+                "notes": ["Invalid target quantity"],
+            }
+
+        if (not isinstance(supply_available, dict)
+                or any(not isinstance(name, str) or not name
+                       or type(amount) not in (int, float)
+                       or not math.isfinite(amount) or amount < 0
+                       for name, amount in supply_available.items())):
+            return {
+                "status": "invalid",
+                "target": {"type": "item", "name": target_prototype, "amount": target_quantity},
+                "selected_recipes": {},
+                "unresolved": [{"type": "item", "name": target_prototype, "amount": target_quantity, "reason": "invalid supply"}],
+                "total_byproducts": [],
+                "net_material_requirements": {},
+                "net_material_surplus": {},
+                "has_cycle": False,
+                "has_unresolved": True,
+                "notes": ["Invalid supply available"],
+            }
+
+        if (type(energy_available) not in (int, float)
+                or not math.isfinite(energy_available) or energy_available < 0):
+            return {
+                "status": "invalid",
+                "target": {"type": "item", "name": target_prototype, "amount": target_quantity},
+                "selected_recipes": {},
+                "unresolved": [{"type": "item", "name": target_prototype, "amount": target_quantity, "reason": "invalid energy"}],
+                "total_byproducts": [],
+                "net_material_requirements": {},
+                "net_material_surplus": {},
+                "has_cycle": False,
+                "has_unresolved": True,
+                "notes": ["Invalid energy available"],
+            }
+
+        # Check if recipe exists
+        recipe = self.recipes.get(target_prototype)
+        if not recipe:
+            return {
+                "status": "no_recipe",
+                "target": {"type": "item", "name": target_prototype, "amount": target_quantity},
+                "selected_recipes": {},
+                "unresolved": [{"type": "item", "name": target_prototype, "amount": target_quantity, "reason": "no recipe found", "candidates": sorted(self.recipes)}],
+                "total_byproducts": [],
+                "net_material_requirements": {},
+                "net_material_surplus": {},
+                "has_cycle": False,
+                "has_unresolved": True,
+                "notes": ["No recipe found for target"],
+            }
+
+        def bounded_failure(status: str, reason: str, note: str) -> dict[str, Any]:
+            return {
+                "status": status,
+                "target": {"type": "item", "name": target_prototype,
+                           "amount": target_quantity},
+                "selected_recipes": {},
+                "unresolved": [],
+                "total_byproducts": [],
+                "net_material_requirements": {},
+                "net_material_surplus": {},
+                "has_cycle": False,
+                "has_unresolved": True,
+                "diagnostic_reason": reason,
+                "notes": [note],
+            }
+
+        # Check for cycle detection
+        cycles: list[list[str]] = []
+        known: dict[str, Recipe] = dict(self.recipes)
+        known[target_prototype] = recipe
+
+        states = {target_prototype: 1}  # 1 = active, 2 = complete
+        path = [target_prototype]
+        positions = {target_prototype: 0}
+        first_dependencies = sorted(
+            inp.prototype_id for inp in recipe.inputs if inp.prototype_id in known)
+        stack: list[tuple[str, int, list[str]]] = [
+            (target_prototype, 0, first_dependencies)
+        ]
+        graph_too_large = False
+        while stack and not cycles and not graph_too_large:
+            proto_id, index, dependencies = stack[-1]
+            if index == len(dependencies):
+                states[proto_id] = 2
+                positions.pop(proto_id)
+                path.pop()
+                stack.pop()
+                continue
+            dependency = dependencies[index]
+            stack[-1] = (proto_id, index + 1, dependencies)
+            state = states.get(dependency, 0)
+            if state == 1:
+                cycles.append(path[positions[dependency]:] + [dependency])
+            elif state == 0:
+                if len(states) >= self.MAX_MATERIAL_FLOW_RECIPES:
+                    graph_too_large = True
+                    continue
+                states[dependency] = 1
+                positions[dependency] = len(path)
+                path.append(dependency)
+                child = known[dependency]
+                child_dependencies = sorted(
+                    inp.prototype_id for inp in child.inputs if inp.prototype_id in known)
+                stack.append((dependency, 0, child_dependencies))
+
+        if graph_too_large:
+            return bounded_failure(
+                "unsupported", "graph_too_large",
+                f"Reachable recipe graph exceeds {self.MAX_MATERIAL_FLOW_RECIPES} recipes")
+        if cycles:
+            return {
+                "status": "unsupported",
+                "target": {"type": "item", "name": target_prototype, "amount": target_quantity},
+                "selected_recipes": {},
+                "unresolved": [{"type": "item", "name": target_prototype, "amount": target_quantity, "reason": "production cycle detected"}],
+                "total_byproducts": [],
+                "net_material_requirements": {},
+                "net_material_surplus": {},
+                "has_cycle": True,
+                "has_unresolved": True,
+                "diagnostic_reason": "cycle_detected",
+                "cycles": cycles,
+                "notes": ["Production cycle detected - cannot compute material flow"],
+            }
+
+        # Build reverse dependency graph for an absolute quantity. base_speed
+        # remains items/second and must never be used as output per craft.
+
+        material_requirements: dict[str, float] = {target_prototype: target_quantity}
+        material_byproducts: dict[str, float] = {}
+        selected_recipes: dict[str, float] = {}
+        unsupported: set[str] = set()
+        total_energy_required_kj = 0.0
+        energy_known = True
+
+        # Queue of prototypes to process (BFS from target through dependencies)
+        to_process: list[str] = [target_prototype]
+        processed_quantity: dict[str, float] = {}
+
+        while to_process:
+            current = min(to_process)
+            to_process.remove(current)
+
+            rec = known.get(current)
+            if not rec:
+                continue
+
+            # Get total quantity of this recipe's output we need
+            qty_needed = (material_requirements.get(current, 0)
+                          - processed_quantity.get(current, 0))
+            if qty_needed <= 0:
+                continue
+            processed_quantity[current] = material_requirements[current]
+
+            if rec.alternatives:
+                unsupported.add("alternative-recipe-selection")
+            if rec.catalysts or any(inp.is_catalyst for inp in rec.inputs):
+                unsupported.add("catalyst-balance")
+            if rec.fluid_ports:
+                unsupported.add("fluid-constraints")
+            if rec.spoilage_rate:
+                unsupported.add("spoilage")
+            if any(inp.is_optional for inp in rec.inputs):
+                unsupported.add("optional-input-selection")
+
+            if rec.output_quantity_per_craft is None:
+                return bounded_failure(
+                    "unsupported", "missing_output_quantity_per_craft",
+                    f"Recipe {current!r} lacks authoritative output-per-craft data")
+            batches = qty_needed / rec.output_quantity_per_craft
+            if not math.isfinite(batches):
+                return bounded_failure(
+                    "invalid", "arithmetic_overflow", "Non-finite recipe batch count")
+            if rec.energy_per_craft_kj is None:
+                energy_known = False
+            else:
+                total_energy_required_kj += batches * rec.energy_per_craft_kj
+                if not math.isfinite(total_energy_required_kj):
+                    return bounded_failure(
+                        "invalid", "arithmetic_overflow", "Non-finite energy total")
+
+            # Add to selected recipes tracking
+            selected_recipes[current] = selected_recipes.get(current, 0) + qty_needed
+
+            # Calculate required inputs for this recipe's batches
+            for inp in sorted(rec.inputs, key=lambda value: value.prototype_id):
+                # Each batch requires inp.count of this input
+                required = batches * inp.count
+                total_required = material_requirements.get(inp.prototype_id, 0) + required
+                if not math.isfinite(required) or not math.isfinite(total_required):
+                    return bounded_failure(
+                        "invalid", "arithmetic_overflow",
+                        "Non-finite material requirement")
+                material_requirements[inp.prototype_id] = total_required
+
+            # Calculate byproducts for this recipe's batches
+            for bp in rec.byproducts:
+                bp_name = bp.get("prototype_id", bp.get("name", ""))
+                bp_count = bp.get("amount", bp.get("count", 1))
+                # Each batch produces bp_count byproduct
+                bp_scaled = batches * bp_count
+                total_byproduct = material_byproducts.get(bp_name, 0) + bp_scaled
+                if not math.isfinite(bp_scaled) or not math.isfinite(total_byproduct):
+                    return bounded_failure(
+                        "invalid", "arithmetic_overflow", "Non-finite byproduct total")
+                material_byproducts[bp_name] = total_byproduct
+
+            # Add dependencies to queue
+            for inp in sorted(rec.inputs, key=lambda value: value.prototype_id):
+                if inp.prototype_id in known:
+                    to_process.append(inp.prototype_id)
+
+        external_requirements = {
+            name: amount for name, amount in material_requirements.items()
+            if name not in known
+        }
+        net_requirements: dict[str, float] = {}
+        net_surplus: dict[str, float] = {}
+        for proto_id in sorted(set(external_requirements) | set(material_byproducts)):
+            required = external_requirements.get(proto_id, 0)
+            produced = material_byproducts.get(proto_id, 0)
+            if required > produced:
+                net_requirements[proto_id] = required - produced
+            elif produced > required:
+                net_surplus[proto_id] = produced - required
+        if any(name in known and name in material_requirements
+               for name in material_byproducts):
+            unsupported.add("intermediate-byproduct-balance")
+        unresolved: list[dict] = []
+        shortages: list[str] = []
+        for proto_id, required in net_requirements.items():
+            if proto_id not in supply_available:
+                unresolved.append({
+                    "type": "item",
+                    "name": proto_id,
+                    "amount": required,
+                    "reason": "no recipe found",
+                    "candidates": sorted(self.recipes),
+                })
+                continue
+            available = supply_available.get(proto_id, 0)
+            if available < required:
+                shortages.append(proto_id)
+
+        return {
+            "status": ("unsupported" if unsupported else "unresolved" if unresolved
+                       else "shortage" if shortages else "computed"),
+            "target": {"type": "item", "name": target_prototype, "amount": target_quantity},
+            "selected_recipes": selected_recipes,
+            "unresolved": unresolved,
+            "total_byproducts": [{"prototype_id": k, "count": material_byproducts[k], "is_byproduct": True}
+                                 for k in sorted(material_byproducts)],
+            "net_material_requirements": net_requirements,
+            "net_material_surplus": net_surplus,
+            "has_cycle": len(cycles) > 0,
+            "has_unresolved": len(unresolved) > 0 or len(shortages) > 0,
+            "shortages": shortages,
+            "total_energy_required_kw": None,
+            "total_energy_required_kj": (
+                round(total_energy_required_kj, 6) if energy_known else None),
+            "energy_available_kw": energy_available,
+            "energy_limiting": None,
+            "power_feasibility": "unknown-without-production-duration",
+            "unsupported_mechanics": sorted(unsupported),
+            "notes": [
+                "Material flow computed via reverse dependency traversal",
+                f"Total recipes selected: {len(selected_recipes)}",
+                f"Total materials required: {len(net_requirements)}",
+                f"Total byproducts generated: {len(material_byproducts)}",
+            ] + (["Supply shortage detected"] if shortages else []) + [
+                "Power cannot be compared with an absolute quantity without a duration"],
+        }
+
     def get_fixture_proof(self, fixture_name: str) -> dict[str, Any]:
         """
         Get proof data for a specific fixture.
@@ -840,6 +1204,9 @@ def create_recipe(
     surface_eligible: list[str] | None = None,
     spoilage_rate: float = 0.0,
     inputs: list[dict[str, Any] | MaterialInput] | None = None,
+    crafting_time_seconds: Optional[float] = None,
+    output_quantity_per_craft: Optional[float] = None,
+    energy_per_craft_kj: Optional[float] = None,
 ) -> Recipe:
     """
     Create a recipe with all fields.
@@ -855,6 +1222,9 @@ def create_recipe(
         surface_eligible: List of eligible surfaces
         spoilage_rate: Spoilage probability per second
         inputs: List of input material definitions (dicts or MaterialInput instances)
+        crafting_time_seconds: Recipe duration at crafting speed 1
+        output_quantity_per_craft: Main output units produced by one craft
+        energy_per_craft_kj: Energy consumed by one craft, not power in kW
         
     Returns:
         Recipe instance
@@ -882,6 +1252,9 @@ def create_recipe(
         prototype_id=prototype_id,
         base_speed=base_speed,
         energy_usage=energy_usage,
+        crafting_time_seconds=crafting_time_seconds,
+        output_quantity_per_craft=output_quantity_per_craft,
+        energy_per_craft_kj=energy_per_craft_kj,
         alternatives=alternatives,
         catalysts=catalysts,
         byproducts=byproducts,

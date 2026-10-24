@@ -141,14 +141,23 @@ def run_quick(root: Path) -> list[Result]:
 
 
 def run_full(root: Path, python: Path) -> Result:
-    runner = root / "memory" / "test_runner.py"
-    if not runner.is_file():
-        return Result("Full offline QA", False, "missing memory/test_runner.py")
+    # This checkout does not ship the legacy GitHub clone's memory/test_runner.py.
+    # Keep the pinned interpreter requirement for the full gate; run its real tests.
     if not python.is_file():
-        return Result("Full offline QA", False, "missing pinned .venv interpreter")
-    result = run([str(python), "-B", str(runner), "--stage", "all-offline"],
-                 root, timeout=300)
-    return Result("Full offline QA", result.returncode == 0, short_output(result))
+        return Result("Full offline QA", False,
+                      "missing pinned .venv interpreter; install requirements.lock")
+    suites = [
+        ("unittest", [str(python), "-B", "-m", "unittest", "discover",
+                      "-s", "tests", "-p", "test_*.py", "-q"]),
+        ("Ruff", [str(python), "-B", "-m", "ruff", "check", "agent", "tests", "memory"]),
+    ]
+    reports = []
+    for label, argv in suites:
+        result = run(argv, root, timeout=240)
+        reports.append((label, result))
+    return Result("Full offline QA", all(x.returncode == 0 for _, x in reports),
+                  "; ".join(f"{label}: {short_output(p)}"
+                            for label, p in reports))
 
 
 def check_backend(root: Path, upstream: Path, build: bool) -> list[Result]:
@@ -204,6 +213,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stage", choices=("quick", "full", "backend", "backend-build"),
                         default="quick")
+    parser.add_argument("--problems-check", action="store_true",
+                        help="Require fresh VS Code Problems diagnostics and no new issues since baseline")
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--upstream", type=Path,
                         help="Required clean pinned FactorioMCP checkout for backend stages")
@@ -213,6 +224,18 @@ def main() -> int:
         parser.error("Not a recognized Factorio AutoEngineer source workspace")
     try:
         results = run_quick(root)
+        if args.problems_check:
+            from vscode_problems_gate import check as check_vscode_problems
+            try:
+                data, introduced = check_vscode_problems(
+                    root / ".local" / "vscode-problems-baseline.json",
+                    root / ".zoo-diagnostics" / "vscode-problems.json",
+                )
+                detail = (f"{data['errors']} errors / {data['warnings']} warnings; "
+                          f"{sum(introduced.values())} introduced")
+                results.append(Result("VS Code Problems", not introduced, detail))
+            except (ValueError, OSError) as exc:
+                results.append(Result("VS Code Problems", False, f"BLOCKED: {exc}"))
         if args.stage == "full":
             python = root / ".venv" / "Scripts" / "python.exe"
             results.append(run_full(root, python))

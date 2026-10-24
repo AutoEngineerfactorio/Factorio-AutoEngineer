@@ -216,7 +216,7 @@ internal static class RecipeResearchAdapter
                         local recipes, recipes_truncated = {}, false
                         local first = ({{{page}}} - 1) * {{{pageSize}}} + 1
                         local last = math.min(first + {{{pageSize}}} - 1, total)
-                        local function normalized_parts(source, limit)
+                        local function normalized_parts(source, limit, is_product)
                             if type(source) ~= "table" then return nil end
                             local result, count = {}, 0
                             for key, part in pairs(source) do
@@ -226,12 +226,64 @@ internal static class RecipeResearchAdapter
                                 if type(part) ~= "table" or type(part.name) ~= "string"
                                     or #part.name < 1 or #part.name > 128
                                     or (part.type ~= "item" and part.type ~= "fluid")
-                                    or type(part.amount) ~= "number" or part.amount <= 0
+                                    or type(part.amount) ~= "number"
                                     or part.amount ~= part.amount or part.amount == math.huge then return nil end
-                                for field in pairs(part) do
-                                    if field ~= "name" and field ~= "type" and field ~= "amount" then return nil end
+                                -- Factorio 2.1 adds quality and probability fields to
+                                -- products. They are accepted only for products, only
+                                -- with valid bounded values, and they mark the row as
+                                -- not deterministic. Unknown fields stay rejected.
+                                -- Observed 2.1.23 shapes: affected_by_quality is a
+                                -- boolean, independent_probability is a number in
+                                -- 0..1, and shared_probability is a {min,max} table.
+                                -- A product may legitimately have amount 0 when the
+                                -- real yield comes from a probability. An ingredient
+                                -- must consume a positive amount.
+                                if is_product then
+                                    if part.amount < 0 then return nil end
+                                else
+                                    if part.amount <= 0 then return nil end
                                 end
-                                result[#result+1] = {name=part.name,type=part.type,amount=part.amount}
+                                local deterministic = true
+                                for field, value in pairs(part) do
+                                    if field == "name" or field == "type" or field == "amount" then
+                                        -- already validated
+                                    elseif field == "affected_by_quality" then
+                                        if not is_product then return nil end
+                                        if type(value) ~= "boolean" then return nil end
+                                    elseif field == "independent_probability" then
+                                        if not is_product then return nil end
+                                        if type(value) ~= "number" or value ~= value
+                                            or value < 0 or value > 1 or value == math.huge then return nil end
+                                        if value < 1 then deterministic = false end
+                                    elseif field == "shared_probability" then
+                                        if not is_product then return nil end
+                                        if type(value) ~= "table" then return nil end
+                                        local low, high = value.min, value.max
+                                        if type(low) ~= "number" or type(high) ~= "number"
+                                            or low ~= low or high ~= high
+                                            or low < 0 or high > 1
+                                            or low > high
+                                            or low == math.huge or high == math.huge then return nil end
+                                        if high < 1 then deterministic = false end
+                                    elseif field == "ignored_by_stats" then
+                                        -- Ingredient flag: does not count towards
+                                        -- player and factory statistics.
+                                        if type(value) ~= "boolean" then return nil end
+                                    elseif field == "spoil_weight" then
+                                        -- Ingredient fluid spoilage weight.
+                                        if type(value) ~= "number" or value ~= value
+                                            or value < 0 or value == math.huge then return nil end
+                                    elseif field == "fluidbox_multiplier" or field == "fluidbox_index" then
+                                        -- Ingredient fluid-box placement hints.
+                                        if type(value) ~= "number" or value ~= value
+                                            or value == math.huge or value == -math.huge then return nil end
+                                    else
+                                        return nil
+                                    end
+                                end
+                                local row = {name=part.name,type=part.type,amount=part.amount}
+                                if not deterministic then row.deterministic = false end
+                                result[#result+1] = row
                             end
                             if count ~= #source then return nil end
                             table.sort(result, function(a,b)
@@ -244,12 +296,28 @@ internal static class RecipeResearchAdapter
                         for i=first,last do
                             local name = recipe_names[i]
                             local recipe = force.recipes[name]
-                            local ingredients = normalized_parts(recipe.ingredients, 16)
-                            local products = normalized_parts(recipe.products, 8)
+                            local ingredients = normalized_parts(recipe.ingredients, 16, false)
+                            local products = normalized_parts(recipe.products, 8, true)
                             local crafting_time = recipe.energy
                             local category_list = recipe_categories(recipe)
-                            local category = type(category_list) == "table" and #category_list == 1
-                                and category_list[1] or nil
+                            -- Factorio 2.1 recipes may declare several categories.
+                            -- The first is the primary category; the full bounded
+                            -- list is reported alongside it so nothing is hidden.
+                            local categories = {}
+                            if type(category_list) == "table" then
+                                for i = 1, math.min(#category_list, 8) do
+                                    local entry = category_list[i]
+                                    if type(entry) ~= "string" or #entry < 1 or #entry > 128 then
+                                        categories = nil
+                                        break
+                                    end
+                                    categories[#categories+1] = entry
+                                end
+                                if categories and #category_list > #categories then categories = nil end
+                            else
+                                categories = nil
+                            end
+                            local category = categories and #categories > 0 and categories[1] or nil
                             if ingredients and products and #products > 0 and type(crafting_time) == "number"
                                 and type(category) == "string" and #category > 0
                                 and #category <= 128
@@ -260,10 +328,14 @@ internal static class RecipeResearchAdapter
                                     and not hidden and category == "crafting"
                                     and #products == 1
                                 for _, part in ipairs(ingredients) do if part.type ~= "item" then simple = false end end
-                                for _, part in ipairs(products) do if part.type ~= "item" then simple = false end end
+                                for _, part in ipairs(products) do
+                                    if part.type ~= "item" then simple = false end
+                                    if part.deterministic == false then simple = false end
+                                end
                                 recipes[#recipes+1] = {
                                     name=name,enabled=recipe.enabled,hidden=hidden,simple=simple,
-                                    category=category,crafting_time=crafting_time,
+                                    category=category,categories=categories,
+                                    crafting_time=crafting_time,
                                     ingredients=ingredients,products=products,
                                     unlock_technologies=unlock_by_recipe[name] or {}}
                             else
@@ -395,10 +467,9 @@ internal static class RecipeResearchAdapter
                     local found = surface.find_entities_filtered{
                         area=area,force=force,type="electric-pole",limit=129}
                     local networks, network_poles, seen = {}, {}, {}
-                    -- The instantaneous LuaElectricNetwork API is 2.1-only.
-                    -- Factorio 2.0 exposes historical electric flow statistics on the pole.
-                    local base_version = script.active_mods["base"] or ""
-                    local legacy_20 = base_version:match("^2%.0%.") ~= nil
+                    -- The instantaneous LuaElectricNetwork API is the supported
+                    -- Factorio 2.1.23 path. The archived 2.0 historical
+                    -- statistics fallback has been removed.
                     local partial = #found>128
                     for i=1,math.min(#found,128) do
                         local pole = found[i]
@@ -422,88 +493,44 @@ internal static class RecipeResearchAdapter
                     for i=1,math.min(#network_ids,8) do
                         local id = network_ids[i]
                         local pole = network_poles[id]
-                        if legacy_20 then
-                            local statistics = pole.electric_network_statistics
-                            if statistics and statistics.valid then
-                                local observed_input, observed_output = 0, 0
-                                local has_history, valid = false, true
-                                for _,entry in ipairs({
-                                    {counts=statistics.input_counts,category="input"},
-                                    {counts=statistics.output_counts,category="output"}
-                                }) do
-                                    for name in pairs(entry.counts or {}) do
-                                        local value = statistics.get_flow_count{
-                                            name=name,category=entry.category,
-                                            precision_index=defines.flow_precision_index.one_minute}
-                                        if not finite_number(value) or value < 0 then
-                                            valid = false
-                                            break
-                                        end
-                                        has_history = true
-                                        if entry.category == "input" then
-                                            observed_input = observed_input + value
-                                        else
-                                            observed_output = observed_output + value
-                                        end
-                                    end
+                        local sub_network = pole.electric_network
+                        local parent = sub_network and sub_network.parent_network
+                        local flow = parent and parent.flow_last_tick
+                        if flow then
+                            local fields = {
+                                "maximum_production","maximum_consumption",
+                                "consumption_satisfaction","production_satisfaction",
+                                "accumulator_energy","accumulator_capacity"}
+                            local row = {network_id=id,tick=game.tick}
+                            local valid = true
+                            for _,field in ipairs(fields) do
+                                local value = flow[field]
+                                if not finite_number(value) or value < 0
+                                    or (field:find("satisfaction") and value > 1) then
+                                    valid = false
+                                    break
                                 end
-                                if valid and finite_number(observed_input)
-                                    and finite_number(observed_output) then
-                                    networks[#networks+1] = {
-                                        network_id=id,tick=game.tick,
-                                        source="legacy_statistics",
-                                        history_available=has_history,
-                                        observed_input=observed_input,
-                                        observed_output=observed_output}
-                                else
-                                    partial = true
-                                end
+                                row[field] = value
+                            end
+                            if valid then
+                                networks[#networks+1] = row
                             else
                                 partial = true
                             end
                         else
-                            local sub_network = pole.electric_network
-                            local parent = sub_network and sub_network.parent_network
-                            local flow = parent and parent.flow_last_tick
-                            if flow then
-                                local fields = {
-                                    "maximum_production","maximum_consumption",
-                                    "consumption_satisfaction","production_satisfaction",
-                                    "accumulator_energy","accumulator_capacity"}
-                                local row = {network_id=id,tick=game.tick}
-                                local valid = true
-                                for _,field in ipairs(fields) do
-                                    local value = flow[field]
-                                    if not finite_number(value) or value < 0
-                                        or (field:find("satisfaction") and value > 1) then
-                                        valid = false
-                                        break
-                                    end
-                                    row[field] = value
-                                end
-                                if valid then
-                                    networks[#networks+1] = row
-                                else
-                                    partial = true
-                                end
-                            else
-                                partial = true
-                            end
+                            partial = true
                         end
                     end
                     table.sort(networks,function(a,b) return a.network_id < b.network_id end)
                     local reason
                     if #networks == 0 then
                         reason = "No readable visible own electric network in the local chart window"
-                    elseif legacy_20 then
-                        reason = "Factorio 2.0 historical electricity statistics only; maximum capacity, satisfaction and accumulator metrics are unavailable"
                     end
                     return {
-                        status=#networks==0 and "unavailable"
-                            or (legacy_20 and "partial" or "ok"),
+                        status=#networks==0 and "unavailable" or "ok",
                         reason=reason,
                         unit="joules_per_tick",tick=game.tick,networks=networks,
-                        partial=partial or legacy_20}
+                        partial=partial}
                 end)
                 if power_ok and power_result then
                     telemetry.power = power_result

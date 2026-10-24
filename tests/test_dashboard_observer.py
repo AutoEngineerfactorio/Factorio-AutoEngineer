@@ -92,7 +92,7 @@ class ObserverTests(unittest.IsolatedAsyncioTestCase):
                 catalog_status=dict(page=number, page_size=16, total_count=17,
                                     total_pages=2, status="ok"),
                 capabilities=dict(
-                    schema=1, tick=120, surface="nauvis", game_version="2.0.77",
+                    schema=1, tick=120, surface="nauvis", game_version="2.1.23",
                     force="player", research=[], enabled_content=["base"],
                     truncated=False, recipes=recipes, source_fingerprint=fingerprint,
                 ),

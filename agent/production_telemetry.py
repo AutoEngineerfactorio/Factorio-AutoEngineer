@@ -212,7 +212,9 @@ def validate_telemetry(raw, tick):
         network_ids.add(row["network_id"])
         normalized = {"network_id": row["network_id"], "tick": tick}
         if power["status"] == "partial":
-            # Factorio 2.0 lacks the 2.1 instantaneous LuaElectricNetwork API.
+            # Archived historical-statistics power payloads are still accepted so
+            # captured evidence stays replayable for regression analysis. The
+            # supported Factorio 2.1.23 backend no longer emits this shape.
             # Empty history is *unknown*, not evidence of zero production or load.
             if (set(row) != {"network_id", "tick", "source", "history_available",
                              "observed_input", "observed_output"}

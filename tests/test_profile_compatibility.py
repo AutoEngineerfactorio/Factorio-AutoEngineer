@@ -17,8 +17,8 @@ class CompatibilityGates(unittest.TestCase):
             received_at=10.0,
         )
 
-    def test_exact_20_and_21_targets_are_qualified_but_not_live_verified(self):
-        for version in ("2.0.77", "2.1.22", "2.1.23"):
+    def test_2123_is_the_sole_qualified_target_and_is_not_live_verified(self):
+        for version in ("2.1.23",):
             with self.subTest(version=version):
                 result = self.observed(dict(caps(), game_version=version))
                 self.assertTrue(result["planner_ready"])
@@ -31,8 +31,9 @@ class CompatibilityGates(unittest.TestCase):
                 )
                 self.assertEqual(preview.feasibility_status, "estimated")
 
-    def test_other_patch_versions_remain_unqualified(self):
-        for version in ("2.0.76", "2.1.21", "2.1.24", "2.2.0"):
+    def test_archived_and_other_patch_versions_remain_unqualified(self):
+        # 2.0.77 and 2.1.22 are archived/rollback and are no longer qualified.
+        for version in ("2.0.77", "2.1.22", "2.0.76", "2.1.21", "2.1.24", "2.2.0"):
             with self.subTest(version=version):
                 result = self.observed(dict(caps(), game_version=version))
                 self.assertFalse(result["planner_ready"])

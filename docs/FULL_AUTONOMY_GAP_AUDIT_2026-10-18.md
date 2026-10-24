@@ -49,13 +49,13 @@ Model proposes an objective and candidate action. Deterministic services own pla
 5. **Fleet economics:** Multiple platform types (small shuttle, bulk cargo, orbital manufacturing, deep-space expedition), route frequency, reliability, capital and operating cost. Treat interplanetary items as a time-expanded transport network.
 6. **Verification:** Compare predicted/actual travel time, sustained asteroid supply, fuel stock, rockets and cargo delivery, damage and 60-minute survival. Build a platform that can reliably transport specified items and safely return before attempting endgame travel.
 
-**Performance caution:** In 2.1, Wube changed space logistics and asteroid impact rules; query version and current game state. Do not apply 2.1 behavior to user's 2.0.77 baseline.
+**Performance caution:** Wube changed space logistics and asteroid impact rules in the 2.1 branch; query version and current game state. The supported target is Factorio 2.1.23, so 2.1.x behavior is what the project plans against; the archived 2.0.77 baseline is not a planning target.
 
 ## B. Space Exploration — autonomous player-built spaceships (mod-only)
 
 **Separate adapter:** `SESpaceshipPlanner` + versioned mod integration; keep SE and official Space Age in different game/mod/save profiles.
 
-1. Read **SE mod version, API/prototypes, technologies and permitted surface**. Treat 2.0/2.1 SE variants differently; SE 0.7.63 requires Factorio 2.1.22+ according to its dated changelog.
+1. Read **SE mod version, API/prototypes, technologies and permitted surface**. Verify that the chosen SE release declares compatibility with the supported Factorio 2.1.23 build; SE 0.7.63 requires Factorio 2.1.22+ according to its dated changelog, so confirm the exact pair before loading it.
 2. Plan contiguous spaceship floors, fully enclosed hull/doors, consoles, engines, boosters, power, life-support requirements where applicable, weapons, cargo and docking clamps.
 3. Validate **structural integrity, container stress**, engine efficiency, travel energy/fuel, cargo loading/unloading, destination and safe docking/clamp availability before launch.
 4. Support the mod's spaceship **scheduler, stops, clamp priorities, wait conditions and interrupts** when exposed through audited mechanisms, otherwise present manual instruction instead of raw Lua execution.

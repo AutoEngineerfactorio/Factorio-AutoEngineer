@@ -1,27 +1,33 @@
 # Factorio 2.x Lua scripting and mod architecture: authoritative reference for Zoo Code
 
-Updated 2026-10-18. Related: [Factorio mechanics](FACTORIO_MECHANICS_REFERENCE.md), [quirk tests](FACTORIO_QUIRKS_AND_EDGE_CASES.md), [coverage gap register](FACTORIO_COVERAGE_GAP_REGISTER.md), [R01-R20 roadmap](../ROADMAP.md). **This document indexes the complete official API**, rather than trying to paste thousands of potentially stale method signatures into a file. Read the precise versioned class/property documentation when writing code. The official /latest pages examined during preparation identified API docs version **2.1.22**; this is *not* proof that the user's installed runtime is that version.
+Updated 2026-10-20. Related: [Factorio mechanics](FACTORIO_MECHANICS_REFERENCE.md), [quirk tests](FACTORIO_QUIRKS_AND_EDGE_CASES.md), [coverage gap register](FACTORIO_COVERAGE_GAP_REGISTER.md), [R01-R20 roadmap](../ROADMAP.md), [offline API archive](OFFLINE_FACTORIO_API.md). **This document indexes the complete official API**, rather than trying to paste thousands of potentially stale method signatures into a file. Read the precise versioned class/property documentation when writing code.
+
+**Supported API version: 2.1.23.** The offline archive at `.local/factorio-api-offline/2.1.23/files/` is a verbatim copy of the verified 2.1.23 installation's `doc-html`; its `runtime-api.json` and `prototype-api.json` declare `application_version` `2.1.23` and `api_version` `6`. The archived 2.1.22 and 2.0.77 folders are historical comparison material only and must not be used as the active API contract. Official online pages are pinned to `/2.1.23/` below; `/latest/` is useful for discovery but is **not** authoritative for the installed version.
 
 ## Canonical complete API indexes (not an abridged list)
 
 | Domain | Complete upstream reference | How to use it |
 |---|---|---|
-| Overview and language | https://lua-api.factorio.com/latest/index.html | Modified Lua 5.2; mod lifecycle and API version |
-| Runtime classes, methods, properties | https://lua-api.factorio.com/latest/index-runtime.html and https://lua-api.factorio.com/latest/classes.html | Check exact read/write attributes, nilability, versions and validity |
-| Every documented event and event structure | https://lua-api.factorio.com/latest/events.html | Use specified event payloads; never guess an event field |
-| Runtime concepts / input types | https://lua-api.factorio.com/latest/concepts.html | Exact type/data shapes, inventories, fluids, quality, positions |
-| Runtime enums/defines | https://lua-api.factorio.com/latest/index-auxiliary.html | Constants for controllers, commands, direction, rail and signal semantics |
-| Complete prototype definitions and types | https://lua-api.factorio.com/latest/index-prototype.html | Data-stage items, recipes, machines, entity behavior, surface/mapgen and planet specs |
-| Settings and file structures | https://lua-api.factorio.com/latest/auxiliary/mod-structure.html and https://wiki.factorio.com/Tutorial:Mod_settings | Dependency order, settings/prototype/runtime stages |
-| Mod load/upgrade sequence | https://lua-api.factorio.com/latest/auxiliary/data-lifecycle.html | on_init/on_load/on_configuration_changed and stages |
-| Persistent state | https://lua-api.factorio.com/latest/auxiliary/storage.html | save/load-safe storage and LuaObjects |
-| Migrations | https://lua-api.factorio.com/latest/auxiliary/migrations.html | JSON renames, Lua conversions and version compatibility |
-| Machine-readable documentation | https://lua-api.factorio.com/latest/auxiliary/json-docs-runtime.html and https://lua-api.factorio.com/latest/index-auxiliary.html | Tooling/codegen can read upstream JSON schema; pin version and document generation, don't assume latest matches local |
+| Overview and language | https://lua-api.factorio.com/2.1.23/index.html | Modified Lua 5.2; mod lifecycle and API version |
+| Runtime classes, methods, properties | https://lua-api.factorio.com/2.1.23/index-runtime.html and https://lua-api.factorio.com/2.1.23/classes.html | Check exact read/write attributes, nilability, versions and validity |
+| Every documented event and event structure | https://lua-api.factorio.com/2.1.23/events.html | Use specified event payloads; never guess an event field |
+| Runtime concepts / input types | https://lua-api.factorio.com/2.1.23/concepts.html | Exact type/data shapes, inventories, fluids, quality, positions |
+| Runtime enums/defines | https://lua-api.factorio.com/2.1.23/index-auxiliary.html | Constants for controllers, commands, direction, rail and signal semantics |
+| Complete prototype definitions and types | https://lua-api.factorio.com/2.1.23/index-prototype.html | Data-stage items, recipes, machines, entity behavior, surface/mapgen and planet specs |
+| Settings and file structures | https://lua-api.factorio.com/2.1.23/auxiliary/mod-structure.html and https://wiki.factorio.com/Tutorial:Mod_settings | Dependency order, settings/prototype/runtime stages |
+| Mod load/upgrade sequence | https://lua-api.factorio.com/2.1.23/auxiliary/data-lifecycle.html | on_init/on_load/on_configuration_changed and stages |
+| Persistent state | https://lua-api.factorio.com/2.1.23/auxiliary/storage.html | save/load-safe storage and LuaObjects |
+| Migrations | https://lua-api.factorio.com/2.1.23/auxiliary/migrations.html | JSON renames, Lua conversions and version compatibility |
+| Machine-readable documentation | https://lua-api.factorio.com/2.1.23/auxiliary/json-docs-runtime.html and https://lua-api.factorio.com/2.1.23/index-auxiliary.html | Tooling/codegen can read upstream JSON schema; pin version and document generation, don't assume latest matches local |
 | Intro/tutorial | https://wiki.factorio.com/Tutorial:Modding_tutorial/Gangsir | Real project examples, locale and prototypes |
 | Console versus mod script | https://wiki.factorio.com/console | Ad hoc /c scripts are NOT the normal authorized agent action path |
-| Debugging, profiler and auxiliaries | https://lua-api.factorio.com/latest/index-auxiliary.html | Instrument mode, libraries, prototype inheritance, noise expressions, other advanced topics |
+| Debugging, profiler and auxiliaries | https://lua-api.factorio.com/2.1.23/index-auxiliary.html | Instrument mode, libraries, prototype inheritance, noise expressions, other advanced topics |
 
-**Version contract:** bind API references to the installed executable's version + mod/expansion fingerprints. On upgrade, compare removed/renamed events, prototype flags, and fields. The /latest endpoint evolves; store versioned evidence without silently auto-upgrading integration. Code generation cannot infer permissions from an API signature.
+**Version contract:** bind API references to the installed executable's version + mod/expansion fingerprints. On upgrade, compare removed/renamed events, prototype flags, and fields. The `/latest/` endpoint evolves; store versioned evidence without silently auto-upgrading integration. Code generation cannot infer permissions from an API signature.
+
+**Exact-signature check before editing Lua:** before changing any Lua source, confirm the exact 2.1.23 signature of every API call the change touches, by grepping `.local/factorio-api-offline/2.1.23/files/runtime-api.json` or `prototype-api.json` for the class, method, property or event and reading its `parameters` and `type`. A name absent from the 2.1.23 JSON is **unverified**: report it as missing documentation instead of guessing, and never substitute a 2.1.22, 2.0.77 or `/latest/` signature. Cite the archive file and exact API name in the change report.
+
+`agent/factorio_api_2123.py` performs this lookup programmatically and fails closed on an unknown name; see [docs/FACTORIO_API_INDEX_2123.md](FACTORIO_API_INDEX_2123.md). Lua Language Server diagnostics against the exact 2.1.23 API are documented in [docs/LUA_DIAGNOSTICS_2123.md](LUA_DIAGNOSTICS_2123.md).
 
 ## The three scripting stages and their contracts
 
@@ -67,13 +73,13 @@ Factorio loads settings, data and runtime separately. Mandatory `info.json` defi
 | Performance, map generation, noise, localization | auxiliary docs and prototype tree | R18/R19/R20 | Entity counts, chunk generation budgets, string translation callback, base-game language |
 
 Useful exact API pages:
-- `script` lifecycle/events: https://lua-api.factorio.com/latest/classes/LuaBootstrap.html
-- `remote` interfaces: https://lua-api.factorio.com/latest/classes/LuaRemote.html
-- `commands`: https://lua-api.factorio.com/latest/classes/LuaCommandProcessor.html
-- GUI roots/elements: https://lua-api.factorio.com/latest/classes/LuaGui.html and https://lua-api.factorio.com/latest/classes/LuaGuiElement.html
-- Surface and planets: https://lua-api.factorio.com/latest/classes/LuaSurface.html and https://lua-api.factorio.com/latest/classes/LuaPlanet.html
-- Platforms: https://lua-api.factorio.com/latest/classes/LuaSpacePlatform.html
-- Events with first-party expansion additions: https://lua-api.factorio.com/latest/events.html
+- `script` lifecycle/events: https://lua-api.factorio.com/2.1.23/classes/LuaBootstrap.html
+- `remote` interfaces: https://lua-api.factorio.com/2.1.23/classes/LuaRemote.html
+- `commands`: https://lua-api.factorio.com/2.1.23/classes/LuaCommandProcessor.html
+- GUI roots/elements: https://lua-api.factorio.com/2.1.23/classes/LuaGui.html and https://lua-api.factorio.com/2.1.23/classes/LuaGuiElement.html
+- Surface and planets: https://lua-api.factorio.com/2.1.23/classes/LuaSurface.html and https://lua-api.factorio.com/2.1.23/classes/LuaPlanet.html
+- Platforms: https://lua-api.factorio.com/2.1.23/classes/LuaSpacePlatform.html
+- Events with first-party expansion additions: https://lua-api.factorio.com/2.1.23/events.html
 
 ## Event families to search by ID in the official events index
 
@@ -88,7 +94,7 @@ Useful exact API pages:
 - **Multiplayer/UI:** connection/disconnection, permission change, GUI click/selection/value/text and translation-result callback.
 - **Performance:** `on_tick`, `on_nth_tick`, event filters, custom event subscriptions and object destroyed callbacks.
 
-**Do not invent event names from these families.** Find exact names and payloads in https://lua-api.factorio.com/latest/events.html, and check whether the installed game version supplies them.
+**Do not invent event names from these families.** Find exact names and payloads in https://lua-api.factorio.com/2.1.23/events.html, and check whether the installed game version supplies them.
 
 ## Safe Lua patterns (illustrative, not an unrestricted agent command API)
 

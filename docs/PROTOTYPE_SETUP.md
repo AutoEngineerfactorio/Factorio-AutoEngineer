@@ -1,6 +1,6 @@
 # Tested source installation — Windows, Python 3.12
 
-This is a supervised experimental source package, not an unattended agent or installer. Use a disposable Factorio 2.0 world only. Main saves must not be connected. MIT and third-party attribution are included separately.
+This is a supervised experimental source package, not an unattended agent or installer. Use a disposable Factorio 2.1.23 world only — Factorio 2.1.23 is the sole supported development and testing version. The archived 2.0.77 and 2.1.22 installations are preserved for rollback only and are not test targets. Main saves must not be connected. MIT and third-party attribution are included separately.
 
 ## Prerequisites
 
@@ -70,4 +70,4 @@ Use [model selection](MODEL_SELECTION.md) to launch Phi-4-mini or retain Qwen. T
 
 ## Input helper required for policy 8
 
-Copy `factorio-mod/autoengineer-input_2.1.22` into the isolated game profile's mods directory. Enable `autoengineer-input` in that profile and fully restart Factorio. This input-only adapter preserves normal controls and lets human input immediately revoke the AI lease. Without it, observation works but gameplay leases fail closed. See [launcher setup](LAUNCHER.md) and [foundation validation](FOUNDATION_VALIDATION.md).
+Copy `factorio-mod/autoengineer-input_2.1.23` into the isolated game profile's mods directory. Enable `autoengineer-input` in that profile and fully restart Factorio. This input-only adapter preserves normal controls and lets human input immediately revoke the AI lease. Without it, observation works but gameplay leases fail closed. See [launcher setup](LAUNCHER.md) and [foundation validation](FOUNDATION_VALIDATION.md).

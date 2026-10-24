@@ -16,7 +16,7 @@ Use Choose setup to select the private JSON, then Start / attach everything. The
 
 AI Helper is read-only; Semi-Autonomous actions require approval. The five-tile movement bound and normal game speed remain active. Emergency Stop cancels startup or cooperatively stops/closes the owned dashboard/controller, leaving the game and model running. Stop launcher-owned services saves and checks a stationary owned test game before closing it, then stops the owned model. Existing attached services are never adopted or closed. If cleanup or saving cannot be confirmed, services stay running and the error is shown. Closing the launcher uses the same shutdown path.
 
-The launcher detects lost services and duplicate starts. It does not automatically approve actions, reconnect a gameplay session or restart failed services. A full setup wizard, provider catalog, clean-PC certification, code signing and a public installer remain roadmap work. Dedicated-server mode exists but this preview was qualified with graphical hosting on Windows and Factorio 2.0.77.
+The launcher detects lost services and duplicate starts. It does not automatically approve actions, reconnect a gameplay session or restart failed services. A full setup wizard, provider catalog, clean-PC certification, code signing and a public installer remain roadmap work. Dedicated-server mode exists but this preview was qualified with graphical hosting on Windows and Factorio 2.1.23.
 
 Local JSON, credentials and runtime logs must not be uploaded. The release example contains placeholders only. The local setup used during development is excluded from release assets.
 
@@ -24,6 +24,8 @@ Gameplay leases require direct character control outside vehicles. Remote view r
 
 ## Foundation update
 
-Install the input-only helper from `factorio-mod/autoengineer-input_2.1.22` into the isolated profile's mods directory and enable it before restarting Factorio. Policy 8 refuses gameplay leases without this helper. It observes linked game controls without consuming them or recording key history. It changes no recipes or progression. Never install into a main profile as part of a test.
+**Supported game version:** Factorio **2.1.23** only. The archived 2.0.77 and 2.1.22 installations, launcher profiles and saves are preserved unchanged for rollback and historical evidence; they are not active test targets and are never migrated or overwritten automatically.
+
+Install the input-only helper from `factorio-mod/autoengineer-input_2.1.23` into the isolated profile's mods directory and enable it before restarting Factorio. Policy 8 refuses gameplay leases without this helper. It observes linked game controls without consuming them or recording key history. It changes no recipes or progression. Never install into a main profile as part of a test.
 
 Take Control revokes approvals and owned activity. Resume requires confirmed stopping, a fresh observation, and an explicit new session. Review interrupted work against the live position and inventory before acknowledging uncertainty. Reviews do not certify completion and never replay an action. Private SQLite checkpoints remain under the launcher runtime directory; do not upload them. See [foundation validation](FOUNDATION_VALIDATION.md).

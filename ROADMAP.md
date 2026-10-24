@@ -6,6 +6,8 @@ The long-term target is autonomous operation with human supervision. **Current b
 
 The user can monitor, pause, override or stop permitted activities. Risky or out-of-scope decisions require approval. Per-movement approval remains a development safeguard until supervised autonomy is independently validated.
 
+**Final development policy: Factorio AutoEngineer supports Factorio 2.1.23 stable only.** Future game-version upgrades require a deliberate compatibility review rather than automatic assumptions.
+
 Complete and validate coverage of all areas of vanilla Factorio, including Space Age,
 before claiming third-party modded gameplay compatibility. Space Age is part of
 the vanilla scope for this project. Full modded gameplay remains the final phase.
@@ -22,8 +24,9 @@ traceability. It supersedes conflicting sequencing in the older Phase 0–6 plan
 it does not weaken safety gates or change deployed services, saves, or permissions.
 
 **Current runtime target (updated October 20, 2026):** Factorio **2.1.23** is the
-sole active development/test target. Factorio 2.1.22 remains a preserved rollback;
-2.0.77 is an archived backport, with no further work unless separately requested.
+sole supported development and testing version. Factorio 2.1.22 and 2.0.77 are
+archived/rollback only: their installations, profiles and saves are preserved
+unchanged and carry no further development, testing or maintenance work.
 Source-level support and offline tests do not constitute installed-runtime acceptance.
 The previously captured 2.1.22 telemetry evidence remains historical; new 2.1.23
 live tests must be version-pinned and independently verified. Do not migrate normal
@@ -69,7 +72,7 @@ R milestone numbers are unchanged. This sequence supersedes older descriptions t
 | **R02 - Safe launcher** | 3 | Start/attach/check/stop only owned services; Windows launcher prototype | Tested local prototype; public setup still R19 |
 | **R03 - Durable jobs** | 3-5 | Remember goals, actions, uncertainty and crash-safe restart without duplicates | Tested journal foundation; full graph later |
 | **R04 - Game capability truth** | 3 | Observe actual game version, enabled content, research, recipes, machines, surfaces and freshness | Snapshot source/offline tests published; live coverage open |
-| **R05 - Mechanics evidence ledger** | 3-5 | Record observed/planned/permitted/verified/regression evidence per mechanic and profile | **COMPLETE FOR NOW / provisionally parked by user (2026-10-20)**. Passing 2.1.22 telemetry suite, 2.1.23 Lua/mod-load and offline checks preserved; 2.1.23 full live mechanics, pY and breadth remain deferred, **not accepted or H1-passed**. Reopen only when a concrete bug, dependency or later gate requires it; see R05 ledger. |
+| **R05 - Mechanics evidence ledger** | 3-5 | Record observed/planned/permitted/verified/regression evidence per mechanic and profile | **COMPLETE FOR NOW / provisionally parked by user (2026-10-20)**. Passing 2.1.22 telemetry suite, 2.1.23 Lua/mod-load and offline checks preserved; 2.1.23 full live mechanics, pY and breadth remain deferred, **not accepted or H1-passed**. All new R05 evidence is collected against Factorio 2.1.23 only; the 2.1.22 and 2.0.77 results stay historical. Reopen only when a concrete bug, dependency or later gate requires it; see R05 ledger. |
 | **R06 - Production mathematics** | 3 | Solve every producible item/fluid/science/intermediate with configurable per-output throughput targets, full recipe-chain constraints and per-output measured-versus-predicted coverage; 300 gears/min is one baseline fixture | **Local work in progress**; acceptance open |
 | **R07 - Blueprint fidelity** | 1B | Safely read/write blueprint strings, books and parameters; maintain private revisioned library and no-placement preview | Offline Helper work follows the specific R04–R06 prerequisites; no placement |
 | **R08 - Build feasibility** | 1B preflight; Phase 2 gameplay | Validate terrain, collision, item bills, belt/pipe/inserter/rail/wire/power connections | Read-only preview before H1; gameplay remains later |
@@ -193,7 +196,7 @@ Completed work retains its documented scope. Requirements are checked only for t
 - [ ] Fresh-save beginner factory, sustained production/research and complete victory acceptance scenarios
 - [ ] Measured 1-hour/8-hour endurance, restart/network recovery, manual takeover and resource budgets
 - [ ] Launcher start/attach/health/stop lifecycle, provider adapters and tested hardware profiles
-- [ ] Separate optional game-version compatibility track; no automatic save migration
+- [ ] Deliberate game-version upgrade review for a future supported Factorio version; no automatic save migration and no parallel 2.0 compatibility track
 
 - [ ] Audit and validate all vanilla systems, including multiplayer and remaining edge cases
 - [ ] Validate complete vanilla progression and recovery in the dedicated test save

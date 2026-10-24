@@ -1,6 +1,6 @@
 """Constrained *offline* Factorio-like recipe flow fixture, not a game simulation.
 
-Models a fixed 2.0.77 ordinary-item production chain with input availability,
+Models a fixed 2.1.23 ordinary-item production chain with input availability,
 crafting machine capacity, short transport caps and a simplified common power
 fraction. Ore enters as a specified available external mining rate; actual
 mining, belts/inserters, buffers, machine state and electricity are NOT modeled.
@@ -139,7 +139,7 @@ def make_constrained_trace() -> dict:
     return {
         "schema": 1,
         "evidence": "synthetic_fixture",
-        "profile": {"game_version": "2.0.77", "force": "player", "surface": "nauvis",
+        "profile": {"game_version": "2.1.23", "force": "player", "surface": "nauvis",
                     "content": ["base"], "tick_rate": TICKS_PER_SECOND},
         "targets": targets,
         "samples": samples,

@@ -11,9 +11,17 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
 from autoengineer_dashboard import Dashboard
+from dashboard_feed import command_help
 
 
 class DashboardStopTests(unittest.TestCase):
+    def test_dashboard_help_exposes_registered_commands_without_connectivity_claim(self):
+        help_text = command_help()
+        self.assertIn("/autoengineer-status", help_text)
+        self.assertIn("/autoengineer-takeover", help_text)
+        self.assertIn("not backend connection proof", help_text)
+        self.assertNotIn("backend connected", help_text.lower())
+
     def dashboard(self):
         view: Any = Dashboard.__new__(Dashboard)
         view.proc = SimpleNamespace(poll=lambda: None, stdin=io.StringIO())

@@ -12,7 +12,7 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
     {
         ["autoengineer_operation_preview"] = ["kind", "name", "count"],
         ["autoengineer_operation"] = ["kind", "name", "count", "safetyOwner", "targetX", "targetY"],
-        ["autoengineer_view"] = ["catalogPage", "catalogPageSize"], ["autoengineer_policy"] = [], ["get_player_position"] = [],
+        ["autoengineer_view"] = ["catalogPage", "catalogPageSize", "mapChunkX", "mapChunkY"], ["autoengineer_policy"] = [], ["get_player_position"] = [],
         ["scan_resources"] = ["radius"], ["get_nearby_entities"] = ["radius"],
         ["walk_to_position"] = ["targetX", "targetY", "safetyOwner", "tolerance", "timeoutSeconds"],
         ["autoengineer_status"] = ["owner"], ["autoengineer_arm"] = ["owner"], ["autoengineer_renew"] = ["owner"], ["autoengineer_stop"] = ["owner"]
@@ -23,9 +23,32 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
         version=8, max_walk=5, restricted=true,
         mode=Environment.GetEnvironmentVariable("AUTOENGINEER_BACKEND_MODE") ?? "helper" });
 
-    [McpServerTool(Name = "autoengineer_view"), Description("Read bounded single-player state and a paged recipe/research catalog; no game actions.")]
-    public Task<string> View(int catalogPage = 1, int catalogPageSize = 16, CancellationToken cancellationToken = default) =>
-        rcon.ExecuteLuaAsync("""
+    [McpServerTool(Name = "autoengineer_view"), Description("Read bounded single-player state, one aligned map chunk and a paged recipe/research catalog; no game actions.")]
+    public Task<string> View(int catalogPage = 1, int catalogPageSize = 16, int mapChunkX = int.MinValue, int mapChunkY = int.MinValue, CancellationToken cancellationToken = default)
+    {
+        // Optional read-only map chunk selection. The chunk indices are the
+        // 64-tile aligned grid the dashboard caches. A negative sentinel means
+        // "the chunk containing the player", which keeps the old behaviour.
+        if ((mapChunkX == int.MinValue) != (mapChunkY == int.MinValue))
+            throw new ArgumentException("Map chunk coordinates must be given together");
+        if (mapChunkX != int.MinValue && (Math.Abs(mapChunkX) > 100000 || Math.Abs(mapChunkY) > 100000))
+            throw new ArgumentException("Map chunk coordinates rejected");
+        return ViewCore(catalogPage, catalogPageSize, mapChunkX, mapChunkY, cancellationToken);
+    }
+
+    private Task<string> ViewCore(int catalogPage, int catalogPageSize, int mapChunkX, int mapChunkY, CancellationToken cancellationToken)
+    {
+        // The chunk selection is injected as a separate, strictly numeric Lua
+        // prelude so the observation body stays a plain raw string. Both values
+        // are validated integers, so no Lua code can be injected through them.
+        string prelude = mapChunkX == int.MinValue
+            ? "local MAP_CHUNK_SELECTED_X=nil local MAP_CHUNK_SELECTED_Y=nil\n"
+            : $"local MAP_CHUNK_SELECTED_X={mapChunkX} local MAP_CHUNK_SELECTED_Y={mapChunkY}\n";
+        return ViewLua(prelude, catalogPage, catalogPageSize, cancellationToken);
+    }
+
+    private Task<string> ViewLua(string prelude, int catalogPage, int catalogPageSize, CancellationToken cancellationToken) =>
+        rcon.ExecuteLuaAsync(prelude + """
             local p = game.connected_players[1]
             if #game.connected_players ~= 1 or not p or not p.character then
                 rcon.print('{"status":"unavailable"}') return
@@ -53,8 +76,21 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
                 if #inv > 2000 then truncated = true end
             end
             -- Display only: do not chart, generate chunks, select entities or change player state.
+            -- The observed window is exactly one aligned 64x64 map chunk. The
+            -- terrain raster and the entity queries MUST cover the same window,
+            -- otherwise the map shows terrain for far more area than it shows
+            -- natural objects for, which reads as missing forest.
+            local MAP_CHUNK_TILES=64
+            local MAP_CHUNK_ENTITY_LIMIT=2048
+            local mapChunkX=math.floor(c.position.x/MAP_CHUNK_TILES)
+            local mapChunkY=math.floor(c.position.y/MAP_CHUNK_TILES)
+            if MAP_CHUNK_SELECTED_X~=nil then
+                mapChunkX=MAP_CHUNK_SELECTED_X
+                mapChunkY=MAP_CHUNK_SELECTED_Y
+            end
+            local ox=mapChunkX*MAP_CHUNK_TILES
+            local oy=mapChunkY*MAP_CHUNK_TILES
             local tiles, entities = {}, {}
-            local ox,oy=math.floor(c.position.x/4)*4-128,math.floor(c.position.y/4)*4-128
             local function visible(x,y)
                 return p.force.is_chunk_visible(c.surface,{math.floor(x/32),math.floor(y/32)})
             end
@@ -63,9 +99,9 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
             end
             -- Palette-indexed tile rows preserve one-tile detail without huge JSON cell objects.
             local rows,palette,colors,chunks={},{"#000000"},{["#000000"]=0},{}
-            for y=oy,oy+255 do
+            for y=oy,oy+MAP_CHUNK_TILES-1 do
                 local row={}
-                for x=ox,ox+255 do
+                for x=ox,ox+MAP_CHUNK_TILES-1 do
                     local cx,cy=math.floor(x/32),math.floor(y/32)
                     local ck=cx..":"..cy
                     local chunk=chunks[ck]
@@ -89,27 +125,101 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
                 rows[#rows+1]=table.concat(row)
             end
             local groups={
-                {kind="resource",types={"resource"},limit=2048},
-                {kind="nature",types={"tree","simple-entity"},limit=512},
+                {kind="resource",types={"resource"},limit=MAP_CHUNK_ENTITY_LIMIT},
+                {kind="nature",types={"tree","simple-entity","cliff"},limit=MAP_CHUNK_ENTITY_LIMIT},
                 {kind="building",force=p.force.name,limit=256},
                 {kind="enemy",force="enemy",limit=128}}
+            -- Chart colour for one prototype. Factorio 2.1.23 charts an entity
+            -- with friendly_map_color or enemy_map_color when they are defined
+            -- and falls back to map_color otherwise. Read-only prototype access.
+            local function chart_color(proto)
+                if not proto then return nil end
+                for _,key in ipairs({"friendly_map_color","enemy_map_color","map_color"}) do
+                    local ok,value=pcall(function() return proto[key] end)
+                    if ok and type(value)=="table" and value.r and value.g and value.b then
+                        -- Compact colour table: three bytes and an alpha flag.
+                        local r=math.floor(math.min(1,math.max(0,tonumber(value.r) or 0))*255+0.5)
+                        local g=math.floor(math.min(1,math.max(0,tonumber(value.g) or 0))*255+0.5)
+                        local b=math.floor(math.min(1,math.max(0,tonumber(value.b) or 0))*255+0.5)
+                        return {r=r,g=g,b=b}
+                    end
+                end
+                return nil
+            end
+            -- Chart colour for a prototype that belongs to the enemy force.
+            -- Factorio charts an enemy with its own ``enemy_map_color`` when the
+            -- prototype defines one, so that colour is preferred over the
+            -- generic ``map_color``. The read-only prototype accessors are the
+            -- same ones the generic resolver uses.
+            local function enemy_chart_color(proto)
+                if not proto then return nil end
+                local ok,value=pcall(function() return proto.enemy_map_color end)
+                if ok and type(value)=="table" and value.r and value.g and value.b then
+                    local r=math.floor(math.min(1,math.max(0,tonumber(value.r) or 0))*255+0.5)
+                    local g=math.floor(math.min(1,math.max(0,tonumber(value.g) or 0))*255+0.5)
+                    local b=math.floor(math.min(1,math.max(0,tonumber(value.b) or 0))*255+0.5)
+                    return {r=r,g=g,b=b}
+                end
+                return nil
+            end
             local partial=false
+            local chunk_complete=true
             for _,g in ipairs(groups) do
-                local found=c.surface.find_entities_filtered{area={{ox,oy},{ox+256,oy+256}},
+                local found=c.surface.find_entities_filtered{area={{ox,oy},{ox+MAP_CHUNK_TILES,oy+MAP_CHUNK_TILES}},
                     type=g.types,force=g.force,limit=g.limit+1}
-                if #found>g.limit then partial=true end
+                if #found>g.limit then partial=true;chunk_complete=false end
                 for i=1,math.min(#found,g.limit) do
                     local e=found[i]
-                    if e.valid and e.type~="character" and e.position.x>=ox and e.position.x<ox+256 and e.position.y>=oy and e.position.y<oy+256 and visible(e.position.x,e.position.y) then
-                        entities[#entities+1]={x=e.position.x,y=e.position.y,name=e.name,kind=g.kind}
+                    if e.valid and e.type~="character" and e.position.x>=ox and e.position.x<ox+MAP_CHUNK_TILES and e.position.y>=oy and e.position.y<oy+MAP_CHUNK_TILES and visible(e.position.x,e.position.y) then
+                        local record={x=e.position.x,y=e.position.y,name=e.name,kind=g.kind}
+                        -- The 2.1.23 LuaEntity.bounding_box is already in world
+                        -- coordinates and reflects orientation and offset.
+                        local ok,box=pcall(function() return e.bounding_box end)
+                        if ok and box and box.left_top and box.right_bottom then
+                            local a,b=box.left_top,box.right_bottom
+                            if b.x>a.x and b.y>a.y and b.x-a.x<=128 and b.y-a.y<=128 then
+                                record.bounds={left_top={x=a.x,y=a.y},right_bottom={x=b.x,y=b.y}}
+                            end
+                        end
+                        if g.kind=="nature" or g.kind=="resource" then
+                            -- Natural objects and resources need their own
+                            -- chart colour and prototype identity so the map
+                            -- can draw a tree, a rock, a cliff and an ore
+                            -- deposit differently.
+                            record.entity_type=e.type
+                            local pok,ptype=pcall(function() return e.prototype.type end)
+                            if pok and type(ptype)=="string" then record.prototype_type=ptype end
+                            local cok,color=pcall(chart_color,e.prototype)
+                            if cok and color then record.map_color=color end
+                            local dok,dir=pcall(function() return e.direction end)
+                            if dok and type(dir)=="number" then record.direction=dir end
+                            -- The graphics variation selects the tree's sprite
+                            -- tint from the prototype's own colour palette,
+                            -- which is what the map draws the tree with.
+                            local vok,variation=pcall(function() return e.graphics_variation end)
+                            if vok and type(variation)=="number" and variation>=0 and variation<256 then
+                                record.graphics_variation=variation
+                            end
+                        elseif g.kind=="enemy" then
+                            -- A currently visible enemy needs its prototype
+                            -- identity and the game's own enemy chart colour
+                            -- so the map marks it the way Factorio does,
+                            -- instead of guessing a generic threat colour.
+                            record.entity_type=e.type
+                            local pok,ptype=pcall(function() return e.prototype.type end)
+                            if pok and type(ptype)=="string" then record.prototype_type=ptype end
+                            local cok,color=pcall(enemy_chart_color,e.prototype)
+                            if cok and color then record.map_color=color end
+                        end
+                        entities[#entities+1]=record
                     end
                 end
             end
             -- Optional read-only overlays. No charting, connector creation or world mutation.
             local overlays={schema=1,available={},partial={},player_name=string.sub(p.name,1,128)}
-            local area={{ox,oy},{ox+256,oy+256}}
+            local area={{ox,oy},{ox+MAP_CHUNK_TILES,oy+MAP_CHUNK_TILES}}
             local function inside(pos)
-                return pos.x>=ox and pos.x<ox+256 and pos.y>=oy and pos.y<oy+256
+                return pos.x>=ox and pos.x<ox+MAP_CHUNK_TILES and pos.y>=oy and pos.y<oy+MAP_CHUNK_TILES
             end
             local function clean(text)
                 return string.sub(string.gsub(text or "","%c"," "),1,128)
@@ -122,12 +232,12 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
             end
             layer("pollution",function()
                 local result={}
-                for cy=math.floor(oy/32),math.floor((oy+255)/32) do
-                    for cx=math.floor(ox/32),math.floor((ox+255)/32) do
+                for cy=math.floor(oy/32),math.floor((oy+MAP_CHUNK_TILES-1)/32) do
+                    for cx=math.floor(ox/32),math.floor((ox+MAP_CHUNK_TILES-1)/32) do
                         local x,y=math.max(ox,cx*32),math.max(oy,cy*32)
                         if charted(x,y) then
                             result[#result+1]={x=x,y=y,value=c.surface.get_pollution({x,y}),
-                                width=math.min(ox+256,(cx+1)*32)-x,height=math.min(oy+256,(cy+1)*32)-y}
+                                width=math.min(ox+MAP_CHUNK_TILES,(cx+1)*32)-x,height=math.min(oy+MAP_CHUNK_TILES,(cy+1)*32)-y}
                         end
                     end
                 end
@@ -197,7 +307,8 @@ internal sealed class AutoEngineerTools(FactorioService factorio, PathfindingSer
                 slots=slots,capacity=inv and #inv or 0,slots_truncated=inv and #inv>200 or false,
                 telemetry=telemetry,
                 catalog_status=catalog_status,capabilities=capabilities,
-                terrain={origin={x=ox,y=oy},step=1,rows=rows,palette=palette,entities=entities,partial=partial}}))
+                terrain={origin={x=ox,y=oy},step=1,rows=rows,palette=palette,entities=entities,partial=partial,
+                map_chunk={x=mapChunkX,y=mapChunkY,size=MAP_CHUNK_TILES},chunk_complete=chunk_complete}}))
             """.Replace("-- AUTOENGINEER_CAPABILITY_ADAPTER --",
                 RecipeResearchAdapter.BuildLua(catalogPage, catalogPageSize), StringComparison.Ordinal),
             cancellationToken);

@@ -14,3 +14,11 @@ Zoo Code is developing the main workspace `D:\AI\Factorio-AutoEngineer-Source`. 
 - Do not modify or fabricate `.zoo-diagnostics/vscode-problems.json` manually. The companion's VS Code extension owns this generated report.
 
 The snapshot exists so Zoo can **recognize the actual VS Code Problems**, even though the AI model cannot directly see the graphical bottom-panel list.
+
+## Mandatory per-chunk diagnostics regression gate (Zoo Code and MiniMax)
+- **Before editing:** run `python -B memory/vscode_problems_gate.py baseline`. If missing, stale, or truncated, report BLOCKED and fix the bridge, not the diagnostics file.
+- **After meaningful edits:** let VS Code refresh its Problems export, then run `python -B memory/code_quality_gate.py --stage quick --problems-check` alongside focused tests and Ruff.
+- **Do not declare a task complete** if that gate fails or reports a stale/unrefreshed export; resolve any newly introduced Pylance, LuaLS, C# or other errors and warnings, then rerun it.
+- Pre-existing errors belong to the captured baseline and must be reported separately; don't rewrite unrelated files or hide warnings to reduce counts.
+- The export is read-only and owned by the VS Code bridge. The baseline is kept under ignored `.local/` and is only refreshed before a new coding chunk, never after adding a new error.
+- In the handoff state the starting Problems total, ending Problems total, newly introduced count, and whether the snapshot was fresh.

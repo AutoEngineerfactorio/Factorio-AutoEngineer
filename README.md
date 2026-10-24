@@ -6,10 +6,12 @@ Factorio AutoEngineer is an experimental, locally powered AI companion project f
 
 > **Development status: experimental prototype.** This is not yet a downloadable, fully autonomous Factorio agent. Do not connect it to important saves or unattended servers.
 
+> **Supported game version: Factorio 2.1.23 only.** Earlier 2.0/2.1.22 installations are archived for rollback only. Future game-version upgrades require a deliberate compatibility review rather than automatic assumptions.
+
 ## What works in our development prototype
 
 - Local Phi-4-mini model (Qwen remains configurable) served through `llama.cpp` with Vulkan on an AMD GPU
-- FactorioMCP connection to a Factorio 2.0 test server
+- FactorioMCP connection to a Factorio **2.1.23** test server (the only supported game version)
 - Live player position, inventory, resource scans, and recipe observations
 - AI-generated movement proposals checked by a Python controller
 - Supervised movement execution, followed by position verification

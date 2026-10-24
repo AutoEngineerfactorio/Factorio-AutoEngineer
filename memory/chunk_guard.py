@@ -26,8 +26,11 @@ from code_quality_gate import (
     run_quick,
 )
 
-MAX_FILES = 2
-MAX_CHANGED_LINES = 120
+MAX_FILES = 2  # Standard/local agent default
+MAX_CHANGED_LINES = 200
+MINIMAX_MAX_FILES = 3
+MINIMAX_MAX_CHANGED_LINES = 400
+PROFILES = ("standard", "minimax")
 MAX_FILE_BYTES = 250_000
 SAFE_PATH = re.compile(r"^[a-zA-Z0-9_./-]{1,200}$")
 TEST_NAME = re.compile(r"^test_[a-z0-9_]+\.py$")
@@ -52,7 +55,7 @@ def safe_file(root: Path, name: str) -> Path:
         raise ChunkError(f"Refusing escape or symbolic link: {name}")
     if not any(name.startswith(prefix) for prefix in
                ("agent/", "tests/", "memory/", "docs/", "backend-safety/",
-                "handoff/", ".roo/", ".vscode/")):
+                "handoff/", ".roo/", ".vscode/", "factorio-mod/")):
         raise ChunkError(f"Path outside permitted source folders: {name}")
     if is_sensitive_path(name):
         raise ChunkError("Cannot snapshot credentials")
@@ -101,9 +104,36 @@ def release_locks(root: Path, names: list[str], session: str) -> None:
             p.unlink()
 
 
-def begin_chunk(root: Path, names: list[str], label: str) -> str:
-    if not 1 <= len(names) <= MAX_FILES or len(set(names)) != len(names):
-        raise ChunkError("Each chunk must name one or two distinct files")
+def sensitive_chunk_file(name: str) -> bool:
+    """Keep backend, game-control and guard/policy edits on the smaller budget."""
+    if (name.startswith(("backend-safety/", ".roo/rules/")) or name in (
+        "memory/chunk_guard.py", "memory/code_quality_gate.py",
+        "docs/ZOO_CODE_TASK_PROTOCOL.md",
+    ) or (name.startswith("factorio-mod/") and name.endswith("/control.lua"))):
+        return True
+    if name.startswith("agent/"):
+        stem = Path(name).stem.lower()
+        return bool(set(re.split(r"[_-]", stem)) & {
+            "rcon", "policy", "approval", "stop", "lease", "dispatch",
+            "movement", "auth", "authorization", "safety", "guard",
+            "supervision", "supervisor", "execution", "control",
+        })
+    return False
+
+
+def chunk_limits(names: list[str], profile: str) -> tuple[int, int]:
+    if profile not in PROFILES:
+        raise ChunkError(f"Unknown chunk profile {profile!r}")
+    if profile == "minimax" and not any(sensitive_chunk_file(n) for n in names):
+        return MINIMAX_MAX_FILES, MINIMAX_MAX_CHANGED_LINES
+    return MAX_FILES, MAX_CHANGED_LINES
+
+
+def begin_chunk(root: Path, names: list[str], label: str, *,
+                profile: str = "standard") -> str:
+    file_cap, line_cap = chunk_limits(names, profile)
+    if not 1 <= len(names) <= file_cap or len(set(names)) != len(names):
+        raise ChunkError(f"Each {profile} chunk must name 1-{file_cap} distinct files")
     if not isinstance(label, str) or not (5 <= len(label.strip()) <= 120):
         raise ChunkError("Provide a brief concrete chunk goal (5-120 characters)")
     paths = [safe_file(root, name) for name in names]
@@ -127,8 +157,8 @@ def begin_chunk(root: Path, names: list[str], label: str) -> str:
                             "sha256": hashlib.sha256(raw).hexdigest()})
         update_manifest(dest / "manifest.json", {
             "schema": 1, "session": session, "goal": label.strip(),
-            "status": "active", "files": records,
-            "limits": {"max_files": MAX_FILES, "max_changed_lines": MAX_CHANGED_LINES},
+            "status": "active", "files": records, "profile": profile,
+            "limits": {"max_files": file_cap, "max_changed_lines": line_cap},
         })
     except (OSError, UnicodeError, ValueError):
         release_locks(root, acquired, session)
@@ -185,17 +215,29 @@ def run_checks(root: Path, *, test_file: str | None, test_stage: str | None,
         checks.append(("Focused regression", False, "Python edit requires --test-file or --test-stage"))
     if test_file or test_stage:
         if test_file:
-            if not TEST_NAME.fullmatch(test_file) or not (root / "tests" / test_file).is_file():
+            if (not TEST_NAME.fullmatch(test_file)
+                    or not (root / "tests" / test_file).is_file()):
                 raise ChunkError("Targeted test filename must be an existing tests/test_*.py file")
+            pattern = test_file
+        else:
+            patterns = {
+                "offline": "test_*.py",
+                "dashboard": "test_dashboard_*.py",
+                "safety": "test_mode_policy.py",
+                "reality": "test_factory_*.py",
+            }
+            if test_stage not in patterns:
+                raise ChunkError(
+                    "Unsupported QA stage in this checkout; use --test-file or one of "
+                    "offline/dashboard/safety/reality"
+                )
+            pattern = patterns[test_stage]
+        if not list((root / "tests").glob(pattern)):
+            checks.append(("Targeted tests", False,
+                           f"No tests matching {pattern!r} in this checkout"))
+        else:
             argv = [sys.executable, "-B", "-m", "unittest", "discover", "-s", "tests",
-                    "-p", test_file, "-q"]
-        else:
-            if test_stage not in ("reality", "safety", "learner", "skills", "dashboard", "offline"):
-                raise ChunkError("Use a known bounded QA stage")
-            argv = [sys.executable, "-B", "memory/test_runner.py", "--stage", test_stage]
-        if not (root / "memory" / "test_runner.py").is_file():
-            checks.append(("Targeted tests", False, "Missing project offline runner"))
-        else:
+                    "-p", pattern, "-q"]
             try:
                 proc = subprocess.run(argv, cwd=root, timeout=180, check=False,
                                       capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -211,14 +253,25 @@ def verify_chunk(root: Path, session: str, *, test_file: str | None = None,
     if test_file and test_stage:
         raise ChunkError("Select exactly one of --test-file and --test-stage")
     changed, total, names, manifest, mf = measure_chunk(root, session)
+    profile = manifest.get("profile", "standard")  # Existing sessions retain standard limits.
+    file_cap, line_cap = chunk_limits(names, profile)
+    recorded = manifest.get("limits", {})
+    if (type(recorded.get("max_files")) is not int
+            or type(recorded.get("max_changed_lines")) is not int
+            or recorded["max_files"] < 1 or recorded["max_changed_lines"] < 1):
+        raise ChunkError("Invalid recorded chunk limits")
+    file_cap = min(file_cap, recorded["max_files"])
+    line_cap = min(line_cap, recorded["max_changed_lines"])
+    if len(names) > file_cap:
+        return False, f"BLOCKED: {len(names)} files exceeds {file_cap} for {profile}"
     if not changed:
         return False, "BLOCKED: no changes in this chunk; do not claim work is complete"
-    if total > MAX_CHANGED_LINES:
-        return False, (f"BLOCKED: {total} changed lines exceeds {MAX_CHANGED_LINES}. "
+    if total > line_cap:
+        return False, (f"BLOCKED: {total} changed lines exceeds {line_cap}. "
                        "Stop, checkpoint and split into smaller tasks.")
     checks = run_checks(root, test_file=test_file, test_stage=test_stage,
                         upstream=upstream, changed=changed)
-    lines = [f"CHUNK {session} | changed={len(changed)}/{MAX_FILES} | lines={total}/{MAX_CHANGED_LINES}"]
+    lines = [f"CHUNK {session} | profile={profile} | changed={len(changed)}/{file_cap} | lines={total}/{line_cap}"]
     lines += [f"{'PASS' if ok else 'FAIL'} {name}: {detail}" for name, ok, detail in checks]
     success = all(ok for _, ok, _ in checks)
     if success:
@@ -255,6 +308,8 @@ def main() -> int:
     task.add_argument("--abort", metavar="CHUNK_ID")
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--label")
+    parser.add_argument("--profile", choices=PROFILES, default="standard",
+                        help="Opt-in larger MiniMax budget; default is standard/local")
     parser.add_argument("--file", action="append", default=[])
     parser.add_argument("--test-file")
     parser.add_argument("--test-stage")
@@ -262,12 +317,15 @@ def main() -> int:
     parser.add_argument("--reason")
     args = parser.parse_args()
     root = args.root.resolve()
-    if not (root / "agent").is_dir() or not (root / "memory" / "test_runner.py").is_file():
-        parser.error("Expected AutoEngineer workspace and offline QA runner")
+    if not (root / "agent").is_dir() or not (root / "memory" / "chunk_guard.py").is_file():
+        parser.error("Expected AutoEngineer source workspace and chunk guard")
     try:
         if args.begin:
-            print("CHUNK STARTED:", begin_chunk(root, args.file, args.label))
-            print(f"Limit: max {MAX_FILES} named files, {MAX_CHANGED_LINES} changed lines; verification required")
+            session = begin_chunk(root, args.file, args.label, profile=args.profile)
+            file_cap, line_cap = chunk_limits(args.file, args.profile)
+            print("CHUNK STARTED:", session)
+            print(f"Profile: {args.profile}; max {file_cap} named files, "
+                  f"{line_cap} changed lines; verification required")
         elif args.verify:
             ok, report = verify_chunk(root, args.verify, test_file=args.test_file,
                                       test_stage=args.test_stage, upstream=args.upstream)

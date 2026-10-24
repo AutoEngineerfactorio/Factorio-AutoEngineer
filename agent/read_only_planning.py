@@ -19,10 +19,11 @@ from mechanics_coverage import (
 )
 from production_solver import MaterialInput, ProductionSolver, create_machine, create_recipe
 
-# Exact source-target versions. Qualification here enables read-only catalog
-# preview only; it is not evidence that a runtime/backend combination passed
-# live acceptance. Other patch versions require a separate compatibility check.
-QUALIFIED_GAME_VERSIONS = frozenset({"2.0.77", "2.1.22", "2.1.23"})
+# The sole supported development and testing game version. Qualification here
+# enables read-only catalog preview only; it is not evidence that a
+# runtime/backend combination passed live acceptance. Any other patch version
+# requires a deliberate compatibility review before it may be qualified.
+QUALIFIED_GAME_VERSIONS = frozenset({"2.1.23"})
 QUALIFIED_CONTENT = frozenset({"base", "core", "autoengineer-input"})
 
 
@@ -94,7 +95,11 @@ def validate_capabilities(raw, surface, tick):
             "name", "enabled", "hidden", "simple", "category",
             "crafting_time", "ingredients", "products",
         }
-        if set(rec) not in (base_fields, base_fields | {"unlock_technologies"}):
+        # Factorio 2.1 recipes may declare several categories and may produce a
+        # stochastic amount. Both are bounded and observed, so they are accepted
+        # explicitly; every other unknown field still fails closed.
+        optional_fields = {"unlock_technologies", "categories"}
+        if not base_fields <= set(rec) <= (base_fields | optional_fields):
             raise ValueError("Unsupported/ambiguous recipe fields")
         name = bounded_name(rec.get("name"))
         category = bounded_name(rec.get("category"))
@@ -113,11 +118,31 @@ def validate_capabilities(raw, surface, tick):
             raise ValueError("Unbounded ingredient/product list")
 
         def part(data):
-            if (not isinstance(data, dict) or set(data) != {"name", "type", "amount"}
-                    or data.get("type") not in ("item", "fluid")):
+            if not isinstance(data, dict):
                 raise ValueError("Unsupported item/fluid attributes")
-            return {"name": bounded_name(data.get("name")),
-                    "type": data["type"], "amount": positive(data.get("amount"))}
+            allowed = {"name", "type", "amount"} | (
+                {"deterministic"} if "deterministic" in data else set()
+            )
+            if (set(data) != allowed or data.get("type") not in ("item", "fluid")):
+                raise ValueError("Unsupported item/fluid attributes")
+            parsed_part = {"name": bounded_name(data.get("name")),
+                           "type": data["type"], "amount": positive(data.get("amount"))}
+            if "deterministic" in data:
+                if type(data["deterministic"]) is not bool:
+                    raise ValueError("Invalid product determinism marker")
+                parsed_part["deterministic"] = data["deterministic"]
+            return parsed_part
+
+        categories = None
+        if "categories" in rec:
+            raw_categories = rec["categories"]
+            if not isinstance(raw_categories, list) or not 1 <= len(raw_categories) <= 8:
+                raise ValueError("Invalid recipe category list")
+            categories = [bounded_name(value) for value in raw_categories]
+            if len(set(categories)) != len(categories):
+                raise ValueError("Duplicate recipe category")
+            if categories[0] != category:
+                raise ValueError("Recipe category list disagrees with the primary category")
 
         unlock_technologies = None
         if "unlock_technologies" in rec:
@@ -154,6 +179,7 @@ def validate_capabilities(raw, surface, tick):
             "products": [part(v) for v in products],
             **({"unlock_technologies": unlock_technologies}
                if unlock_technologies is not None else {}),
+            **({"categories": categories} if categories is not None else {}),
         })
     return {
         "schema": 1, "tick": tick, "surface": surface,

@@ -34,7 +34,7 @@ class CatalogViewModelTests(unittest.TestCase):
                 "total_count": 1,
             },
             "capabilities": {
-                "game_version": "2.0.77",
+                "game_version": "2.1.23",
                 "force": "player",
                 "surface": "nauvis",
                 "tick": 900,
@@ -85,7 +85,7 @@ class CatalogViewModelTests(unittest.TestCase):
                 "total_count": 60,
             },
             "capabilities": {
-                "game_version": "2.0.77",
+                "game_version": "2.1.23",
                 "force": "player",
                 "surface": "nauvis",
                 "tick": 901,
@@ -124,7 +124,7 @@ class CatalogViewModelTests(unittest.TestCase):
             "reason": "Recipe catalog empty/truncated: planning disabled",
             "catalog_status": {"status": "assembled"},
             "capabilities": {
-                "game_version": "2.0.77",
+                "game_version": "2.1.23",
                 "force": "player",
                 "surface": "nauvis",
                 "tick": 902,
