@@ -24,6 +24,16 @@ COMMAND_HELP = (
 MAX_VIEWPORT_CHUNKS = 64
 """Upper bound on the chunks one viewport request may ask for."""
 
+MAX_CATALOG_COUNT = 65536
+"""Upper bound on the recipe catalog's own recipe count.
+
+The bound must hold the largest catalog the game can report. A live
+Factorio 2.1.23 run with the full Pyanodons suite observed **10,146**
+recipes, so a smaller bound rejected a real catalog and the dashboard
+reported no observation at all. The bound stays finite and well below the
+memory a frame could carry.
+"""
+
 
 def command_help() -> str:
     """Return stable user help without claiming backend connectivity."""
@@ -155,7 +165,7 @@ def snapshot(raw) -> dict[str, Any]:
     # Older policy-8 backends omit this same-tick metadata and remain observation-only.
     capabilities = None
     if "capabilities" in raw:
-        from read_only_planning import validate_capabilities
+        from read_only_planning import accounted_recipe_count, validate_capabilities
 
         capabilities = validate_capabilities(
             raw["capabilities"], data["surface"], data["tick"]
@@ -163,23 +173,40 @@ def snapshot(raw) -> dict[str, Any]:
         data["capabilities"] = capabilities
     if "catalog_status" in raw:
         status = raw["catalog_status"]
+        optional_status = {
+            "fingerprint_nodes", "fingerprint_bytes", "fingerprint_string_bytes",
+            "fingerprint_complete", "coverage_complete", "snapshot",
+            "snapshot_tick", "observation_tick",
+        }
         if (not isinstance(status, dict)
-                or set(status) not in (
+                or set(status) - optional_status not in (
                     {"page", "page_size", "status"},
                     {"page", "page_size", "status", "total_count", "total_pages"},
                     {"page", "page_size", "status", "total_count", "total_pages", "pages_collected"},
                 )
                 or type(status.get("page")) is not int or not 1 <= status["page"] <= 10000
-                or type(status.get("page_size")) is not int or not 1 <= status["page_size"] <= 32
+                or type(status.get("page_size")) is not int or not 1 <= status["page_size"] <= 128
                 or status.get("status") not in (
                     "ok", "assembled", "assembly_failed", "page_out_of_range",
                     "catalog_limit", "unavailable",
                 )):
             raise ValueError("Invalid recipe catalog page status")
         normalized = {key: status[key] for key in ("page", "page_size", "status")}
+        for key in optional_status & status.keys():
+            value = status[key]
+            if key in {"fingerprint_complete", "coverage_complete", "snapshot"}:
+                if type(value) is not bool:
+                    raise ValueError("Invalid catalog snapshot flag")
+            elif type(value) is not int or not 0 <= value <= 2**53:
+                raise ValueError("Invalid catalog snapshot counter")
+            normalized[key] = value
+        represented_count = (accounted_recipe_count(capabilities)
+                             if capabilities is not None else 0)
         if "total_count" in status:
-            if (type(status["total_count"]) is not int or not 0 <= status["total_count"] <= 10000
-                    or type(status["total_pages"]) is not int or not 0 <= status["total_pages"] <= 10000):
+            if (type(status["total_count"]) is not int
+                    or not 0 <= status["total_count"] <= MAX_CATALOG_COUNT
+                    or type(status["total_pages"]) is not int
+                    or not 0 <= status["total_pages"] <= MAX_CATALOG_COUNT):
                 raise ValueError("Invalid recipe catalog counts")
             expected_pages = math.ceil(status["total_count"] / status["page_size"])
             if status["total_pages"] != expected_pages:
@@ -199,16 +226,16 @@ def snapshot(raw) -> dict[str, Any]:
                 raise ValueError("Recipe page missing or exceeds declared size")
             if (not capabilities["truncated"]
                     and status["total_pages"] <= 1
-                    and status["total_count"] != len(capabilities["recipes"])):
+                    and status["total_count"] != represented_count):
                 raise ValueError("Incomplete recipe page cannot certify completeness")
         elif status["status"] == "assembled":
             expected_pages = max(1, status.get("total_pages", -1))
             if ("total_count" not in normalized or "pages_collected" not in normalized
                     or status["page"] != 1 or status["pages_collected"] != expected_pages
                     or capabilities is None
-                    or len(capabilities["recipes"]) > status["total_count"]
+                    or represented_count > status["total_count"]
                     or (not capabilities["truncated"]
-                        and len(capabilities["recipes"]) != status["total_count"])
+                        and represented_count != status["total_count"])
                     or not capabilities.get("source_fingerprint")):
                 raise ValueError("Invalid assembled recipe catalog")
         elif status["status"] == "assembly_failed":
@@ -638,7 +665,10 @@ class DashboardFeed:
 def parse_frame(line: str) -> dict[str, Any] | None:
     if not line.startswith(PREFIX):
         return None
-    if len(line) > 1048576:
+    # A bounded 64-chunk map can exceed 1 MiB once raster rows, entities and
+    # the recipe catalog are serialized. Preserve the strict upper bound, but
+    # allow a realistic multi-chunk observation through the display boundary.
+    if len(line) > 4 * 1048576:
         raise ValueError("Display frame too large")
     data = json.loads(line[len(PREFIX) :])
     if not isinstance(data, dict) or data.get("schema") != 1:

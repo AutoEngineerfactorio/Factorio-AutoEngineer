@@ -5,6 +5,7 @@ The dashboard does not directly access Factorio, RCON, or MCP.
 """
 
 import json
+import math
 import os
 import queue
 import re
@@ -19,7 +20,6 @@ from tkinter import messagebox, scrolledtext, ttk
 
 from app_runtime import component_command
 from dashboard_feed import PREFIX, command_help, encode_viewport_request, parse_frame
-from dashboard_view import LiveView
 from factorio_theme import AMBER, INSET, TEXT, apply_theme
 from mode_policy import FULL, HELPER, LABELS, SEMI
 from navigation_objective import Objective
@@ -30,6 +30,37 @@ from telemetry_view import TelemetryView
 from verified_operations import validate_operation
 
 AGENT = Path(__file__).resolve().parent / "supervised_agent.py"
+
+
+def isolated_observer_environment():
+    """Connect read-only observer to the dedicated 2.1.23 test profile.
+
+    Keep the RCON password solely in the child environment; the generated
+    settings file contains only the local port and patched backend path.
+    """
+    root = AGENT.parent.parent
+    profile = root / ".local" / "launcher-profiles" / "2.1.23" / "config.ini"
+    backend = (root / ".local" / "live-pillow-2.1.23" /
+               "backend-patched-2.1.23" / "FactorioMCP.dll")
+    telemetry_backend = root / '.local' / 'telemetry-backend-2.1.23' / 'FactorioMCP.dll'
+    if os.environ.get('AUTOENGINEER_ENABLE_LIVE_MAP', '0') != '1' and telemetry_backend.is_file():
+        backend = telemetry_backend
+    if not backend.is_file() or not profile.is_file():
+        raise FileNotFoundError("Isolated Factorio 2.1.23 profile/backend unavailable")
+    ini = profile.read_text(encoding="utf-8")
+    socket = re.search(r"(?m)^local-rcon-socket=127\.0\.0\.1:(\d+)\s*$", ini)
+    password = re.search(r"(?m)^local-rcon-password=([^\s]+)\s*$", ini)
+    if not socket or not password or not 1 <= int(socket.group(1)) <= 65535:
+        raise ValueError("Isolated Factorio RCON configuration incomplete")
+    config = root / ".local" / "dashboard-observer-config.json"
+    config.write_text(json.dumps({"mcp_server_dll": str(backend),
+                                  "rcon_host": "127.0.0.1",
+                                  "rcon_port": int(socket.group(1))}), encoding="utf-8")
+    env = dict(os.environ)
+    env["AUTOENGINEER_CONFIG"] = str(config)
+    env["FACTORIO_RCON_PASSWORD"] = password.group(1)
+    env["AUTOENGINEER_MODE"] = "helper"
+    return env
 
 
 def catalog_notice(frame, intelligence):
@@ -66,14 +97,49 @@ def catalog_notice(frame, intelligence):
     return reason
 
 
+class MapFreeStatusView(ttk.Frame):
+    """Lightweight observation status without map drawing or chunk requests."""
+
+    def __init__(self, parent):
+        super().__init__(parent, padding=18)
+        self.last = None
+        self.received = None
+        self.available = False
+        self.viewport_sender = None
+        self.message = tk.StringVar(value="Performance mode: map polling disabled")
+        ttk.Label(self, text="FACTORY OVERVIEW", style="Section.TLabel").pack(anchor="w")
+        ttk.Label(self, textvariable=self.message, style="Muted.TLabel").pack(
+            anchor="w", pady=12
+        )
+        ttk.Label(self, text="Use Recipes & Research for planning and Production & Power for telemetry."
+                  ).pack(anchor="w")
+
+    def update_frame(self, frame):
+        if frame.get("status") == "ok":
+            self.last = frame
+            self.received = time.monotonic()
+            self.available = True
+            self.message.set(f"Observed {frame['surface']} at tick {frame['tick']}")
+        else:
+            self.available = False
+            self.message.set("Live observation paused to protect game performance")
+
+    def request_viewport(self):
+        return None
+
+    def freshness(self, running):
+        if not running and self.available:
+            self.message.set("Observer stopped; last snapshot retained")
+
+
 class Dashboard:
     def __init__(self, root):
         self.root = root
         apply_theme(root)
         root.title("Factorio AutoEngineer | Supervised Control")
-        # Map-first: the dashboard opens on a wide window so the live map is
-        # the dominant surface, with the mission-control side column beside it.
-        root.geometry("1920x1080")
+        # Map-free, production-first layout. Spatial observation stays in the
+        # agent backend, not in the interactive dashboard hot path.
+        root.geometry("1600x960")
         root.minsize(1280, 800)
         self.manual_control = False
         self.takeover_started = 0
@@ -84,6 +150,7 @@ class Dashboard:
         )
         self.proc = None
         self.observer = None
+        self.catalog_observer = None
         self.q = queue.Queue()
         self.waiting_for_approval = False
         self.stop_requested = False
@@ -106,6 +173,7 @@ class Dashboard:
         self.sync_mode_controls()
         self.root.after(80, self.process_events)
         self.root.after(100, self.start_observer)
+        self.root.after(250, self.start_catalog_observer)  # One page on startup; full sweep is opt-in.
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def build_ui(self):
@@ -149,15 +217,18 @@ class Dashboard:
         workspace = ttk.Panedwindow(self.root, orient="horizontal")
         workspace.pack(fill="both", expand=True, padx=20, pady=(0, 10))
         tabs = ttk.Notebook(workspace)
-        # The map tab gets the dominant share of the window; the mission
-        # control column keeps a fixed, compact width.
+        # Planning and telemetry are primary; no canvas or live-map renderer
+        # is instantiated, so map redraws cannot affect the game or UI.
         workspace.add(tabs, weight=9)
-        self.live_view = LiveView(tabs)
-        tabs.add(self.live_view, text="SURFACE & INVENTORY")
         self.planning_view = RecipeResearchView(tabs)
         tabs.add(self.planning_view, text="RECIPES & RESEARCH")
+        ttk.Button(self.planning_view, text="Load full recipe catalog (slower during play)",
+                   command=lambda: self.start_catalog_observer(full=True)).pack(
+                       side="bottom", anchor="e", padx=8, pady=3)
         self.telemetry_view = TelemetryView(tabs)
         tabs.add(self.telemetry_view, text="PRODUCTION & POWER")
+        self.live_view = MapFreeStatusView(tabs)
+        tabs.add(self.live_view, text="FACTORY OVERVIEW")
         activity = ttk.Frame(tabs)
         tabs.add(activity, text="ACTIVITY LOG")
         self.log = scrolledtext.ScrolledText(
@@ -345,6 +416,49 @@ class Dashboard:
 
     def display_frame(self, value):
         try:
+            # Dedicated map-free tool emits a bounded telemetry envelope.
+            # Do not send it through the recipe/map snapshot parser.
+            if value.startswith(PREFIX):
+                raw = json.loads(value[len(PREFIX):])
+                if isinstance(raw, dict) and raw.get("telemetry_only") is True:
+                    from production_telemetry import validate_telemetry
+
+                    tick = raw.get("tick")
+                    if type(tick) is not int or tick < 0:
+                        raise ValueError("Invalid telemetry tick")
+                    telemetry = validate_telemetry(raw.get("telemetry"), tick)
+                    samples = raw.get("sampled_item_flow", [])
+                    if samples == {}:
+                        samples = []  # Empty Lua arrays serialize as objects.
+                    if not isinstance(samples, list) or len(samples) > 8:
+                        raise ValueError("Invalid sampled item flow")
+                    names = set()
+                    for sample in samples:
+                        if (not isinstance(sample, dict)
+                            or set(sample) != {"name", "input", "output"}
+                            or not isinstance(sample["name"], str)
+                            or not 1 <= len(sample["name"]) <= 128
+                            or any(ord(c) < 32 for c in sample["name"])
+                            or sample["name"] in names
+                            or any(type(sample[k]) not in (int, float)
+                                   or not math.isfinite(sample[k]) or sample[k] < 0
+                                   or sample[k] > 1e12 for k in ("input", "output"))):
+                            raise ValueError("Invalid sampled item flow")
+                        names.add(sample["name"])
+                    frame = {"status": "ok", "tick": tick, "telemetry": telemetry,
+                             "sampled_item_flow": samples, "surface": raw.get("surface")}
+                    self.telemetry_view.update_frame(frame)
+                    surface = raw.get("surface")
+                    x, y = raw.get("x"), raw.get("y")
+                    if (isinstance(surface, str) and 1 <= len(surface) <= 128
+                        and isinstance(x, (int, float)) and not isinstance(x, bool)
+                        and isinstance(y, (int, float)) and not isinstance(y, bool)
+                        and math.isfinite(x) and math.isfinite(y)):
+                        self.live_view.update_frame({"status": "ok", "surface": surface,
+                                                     "tick": tick})
+                        self.position.set(f"{x:.2f}, {y:.2f}")
+                    self.status.set("Map-free telemetry connected")
+                    return
             frame = parse_frame(value)
             if frame is None:
                 raise ValueError("Not a display frame")
@@ -397,13 +511,18 @@ class Dashboard:
     def start_observer(self):
         if self.closing or self.observer is not None:
             return
+        # Telemetry is the default: unlike autoengineer_view, this path does
+        # not request terrain, map entities or the recipe/research catalog.
+        use_map = os.environ.get("AUTOENGINEER_ENABLE_LIVE_MAP", "0") == "1"
         startup = subprocess.STARTUPINFO() if os.name == "nt" else None
         if startup:
             startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startup.wShowWindow = subprocess.SW_HIDE
         try:
+            observer_env = isolated_observer_environment()
             self.observer = subprocess.Popen(
-                component_command("dashboard_observer"),
+                component_command("dashboard_observer" if use_map else "lightweight_telemetry_observer"),
+                env=observer_env,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -419,9 +538,76 @@ class Dashboard:
             # request is advisory and read-only.
             setattr(self.live_view, "viewport_sender", self.send_viewport)
             threading.Thread(target=self.read_output, args=(self.observer,), daemon=True).start()
-        except OSError:
+        except (OSError, ValueError) as exc:
             self.live_view.update_frame({"status": "unavailable"})
+            self.status.set(f"Observer configuration unavailable: {exc}")
             self.root.after(3000, self.start_observer)
+
+    def start_catalog_observer(self, full=False):
+        """Fetch one read-only map-free recipe page, or an opt-in full catalog."""
+        if self.closing or (self.catalog_observer and self.catalog_observer.poll() is None):
+            return
+        try:
+            env = isolated_observer_environment()
+            env["AUTOENGINEER_CATALOG_ONLY"] = "1"
+            env["AUTOENGINEER_CATALOG_FULL"] = "1" if full else "0"
+            self.catalog_observer = subprocess.Popen(
+                component_command("dashboard_observer"), env=env,
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                errors="replace", cwd=str(AGENT.parent),
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+            self.planner_note.set(
+                "Loading full modded catalog (read-only; may affect UPS)" if full
+                else "Loading first recipe page (read-only; map disabled)"
+            )
+            threading.Thread(target=self.read_output, args=(self.catalog_observer,),
+                             daemon=True).start()
+        except (OSError, ValueError) as exc:
+            self.planner_note.set(f"Catalog observer unavailable: {type(exc).__name__}")
+
+    def display_catalog_frame(self, value):
+        """Catalog snapshots never affect the telemetry view or the map."""
+        try:
+            if len(value) > 16 * 1048576 or not value.startswith(PREFIX):
+                raise ValueError("Catalog frame exceeds bound or lacks prefix")
+            raw = json.loads(value[len(PREFIX):])
+            if not isinstance(raw, dict):
+                raise ValueError("Invalid catalog frame")
+            status = raw.get("catalog_status")
+            if isinstance(status, dict) and status.get("status") == "assembled":
+                # Full modded catalogs may span ticks and lack a trusted source
+                # fingerprint. Validate independently and mark them partial;
+                # never force them through the same-tick map-frame contract.
+                from dashboard_feed import snapshot
+                from read_only_planning import validate_capabilities
+
+                reduced = {k: v for k, v in raw.items()
+                           if k not in ("capabilities", "catalog_status")}
+                frame = snapshot(reduced)
+                caps = validate_capabilities(raw.get("capabilities"),
+                                             frame["surface"], frame["tick"])
+                if (status.get("page") != 1
+                    or type(status.get("total_count")) is not int
+                    or type(status.get("total_pages")) is not int
+                    or type(status.get("pages_collected")) is not int
+                    or status["pages_collected"] != max(1, status["total_pages"])
+                    or len(caps["recipes"]) > status["total_count"]
+                    or (not caps["truncated"] and
+                        not caps.get("source_fingerprint"))):
+                    raise ValueError("Unverified assembled catalog")
+                frame.update(status="ok", capabilities=caps, catalog_status=status)
+            else:
+                frame = parse_frame(value)
+            if frame is None or frame.get("status") != "ok":
+                self.planner_note.set("Recipe catalog read unavailable; retry manually")
+                return
+            intelligence = self.planning_session.observe(frame)
+            self.planning_view.update_intelligence(intelligence)
+            self.planner_note.set("R04-R06: " + catalog_notice(frame, intelligence))
+        except (ValueError, TypeError, KeyError, AttributeError):
+            self.planner_note.set("Recipe catalog validation failed; planning disabled")
 
     def send_viewport(self, center_x, center_y, radius_x, radius_y):
         """Ask the observer to observe the chunks the map currently shows."""
@@ -438,6 +624,20 @@ class Dashboard:
 
     def close_display(self):
         self.closing = True
+        catalog = getattr(self, "catalog_observer", None)
+        if catalog is not None and catalog.poll() is None:
+            try:
+                if catalog.stdin is not None:
+                    catalog.stdin.write("q\n")
+                    catalog.stdin.flush()
+            except (OSError, ValueError):
+                pass
+            def wait_catalog():
+                try:
+                    catalog.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    catalog.terminate()  # Only this dashboard-owned observer.
+            threading.Thread(target=wait_catalog, daemon=True).start()
         p = self.observer
         if p and p.poll() is None:
             try:
@@ -573,6 +773,27 @@ class Dashboard:
         threading.Thread(target=self.read_output, args=(p,), daemon=True).start()
 
     def read_output(self, proc):
+        if proc is self.observer:
+            # Observed maps can be multi-megabyte single lines. Never split a
+            # JSON frame mid-line: doing so discards both the map and its tail.
+            # readline is also substantially cheaper than reading each byte.
+            max_line = 4 * 1048576
+            try:
+                while True:
+                    line = proc.stdout.readline(max_line + 2)
+                    if not line:
+                        break
+                    if len(line) > max_line:
+                        while line and not line.endswith("\n"):
+                            line = proc.stdout.readline(max_line + 2)
+                        self.q.put((proc, "line", "[Observer frame exceeds 4 MiB limit]\n"))
+                        continue
+                    self.q.put((proc, "line", line))
+            except Exception as exc:
+                self.q.put((proc, "line", f"[Observer output reader error: {exc}]\n"))
+            finally:
+                self.q.put((proc, "exit", proc.wait()))
+            return
         # Read one character at a time because input() prints its prompt
         # without a trailing newline. Detect that prompt before asking for approval.
         buffer = ""
@@ -596,9 +817,11 @@ class Dashboard:
                     except Exception:
                         pass
                     buffer = ""
-                elif len(buffer) > 1048576:
-                    self.q.put((proc, "line", buffer))
+                elif len(buffer) > 16 * 1048576:
+                    self.q.put((proc, "line", "[Observation frame exceeds 16 MiB; rejected]"))
                     buffer = ""
+                    proc.terminate()  # Only the observer that sent an oversized frame.
+                    break
             if buffer:
                 self.q.put((proc, "line", buffer))
         except Exception as exc:
@@ -608,19 +831,32 @@ class Dashboard:
             self.q.put((proc, "exit", code))
 
     def process_events(self):
+        latest_observer_frame = None
+        latest_catalog_frame = None
         try:
             for _ in range(300):
                 proc, kind, value = self.q.get_nowait()
                 if proc is self.observer:
                     if kind == "line" and value.startswith(PREFIX):
-                        self.display_frame(value)
+                        # Preserve only the newest observation from a burst.
+                        # Redrawing every queued frame can freeze Tk for seconds.
+                        latest_observer_frame = value
                     elif kind == "line" and value.strip():
                         self.append(value)
                     elif kind == "exit":
+                        latest_observer_frame = None
                         self.observer = None
                         self.live_view.update_frame({"status": "unavailable"})
                         if not self.closing:
                             self.root.after(3000, self.start_observer)
+                    continue
+                if proc is getattr(self, "catalog_observer", None):
+                    if kind == "line" and value.startswith(PREFIX):
+                        latest_catalog_frame = value
+                    elif kind == "line" and value.strip():
+                        self.append(value)
+                    elif kind == "exit":
+                        self.catalog_observer = None
                     continue
                 if proc is not self.proc:
                     continue
@@ -667,6 +903,10 @@ class Dashboard:
                         return
         except queue.Empty:
             pass
+        if latest_observer_frame is not None:
+            self.display_frame(latest_observer_frame)
+        if latest_catalog_frame is not None:
+            self.display_catalog_frame(latest_catalog_frame)
         if hasattr(self, "live_view"):
             self.live_view.freshness(self.observer is not None)
         self.root.after(80, self.process_events)

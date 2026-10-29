@@ -67,6 +67,7 @@ __all__ = [
     "parse_map_color",
     "rock_shape",
     "shade_color",
+    "tree_canopy_tiles",
     "tree_shape",
     "tree_tint_color",
     "tree_tint_palette",
@@ -194,14 +195,30 @@ TREE_MARKER_TILES = 0.6
 ROCK_MARKER_TILES = 0.7
 CLIFF_MARKER_TILES = 1.0
 
-# Smallest on-screen radius, in pixels, of a tree glyph.
+# Smallest on-screen radius of a tree glyph, expressed in **world tiles**.
 #
 # At a wide map zoom one world tile is only a few pixels across, so a tree
 # drawn strictly to its observed footprint becomes a one-pixel speck and a
 # densely wooded region reads as scattered dots instead of forest cover.
-# The minimum keeps every *observed* tree legible; it never adds a tree at
-# a position the observer did not report.
-TREE_MIN_MARKER_PIXELS = 2.5
+#
+# The floor is expressed in tiles rather than in screen pixels on purpose.
+# A fixed pixel floor cannot satisfy both ends of the zoom range: at a wide
+# zoom it is too small to bridge the gap between neighbouring trees, and at a
+# close zoom it makes every tree balloon far past its own footprint. A
+# tile-derived floor scales with the map zoom, so a stand of trees reads as
+# continuous canopy at every zoom level and an isolated tree keeps reading as
+# one tree.
+#
+# The floor only changes how large the glyph for an *observed* tree is drawn.
+# It never adds a tree, never moves a tree and never merges two trees into
+# one: the glyph count still equals the observed tree count.
+TREE_CANOPY_TILES = 0.62
+
+# The tree glyph radius is derived from the tree's own on-map symbol size
+# (its observed footprint, or the game's tree-marker size) with this factor.
+# The factor makes the drawn canopy a little wider than the symbol, the way
+# the in-game map draws a crown that is wider than a trunk collision box.
+TREE_CANOPY_FOOTPRINT_FACTOR = 0.85
 
 
 def _number(value):
@@ -473,6 +490,26 @@ def tree_shape(shape):
     was reported.
     """
     return _symbol_tiles(shape, TREE_MARKER_TILES)
+
+
+def tree_canopy_tiles(shape):
+    """Return the radius of a tree's canopy glyph, in world tiles.
+
+    The canopy radius is the tree's own on-map symbol size widened by
+    ``TREE_CANOPY_FOOTPRINT_FACTOR``, with a floor of ``TREE_CANOPY_TILES``.
+
+    The floor is the reason a densely wooded region reads as continuous
+    canopy instead of scattered dots: two observed trees on neighbouring
+    tiles are one tile apart, so a canopy radius of half a tile already
+    makes their glyphs meet, and slightly more makes them overlap into one
+    stand of foliage. The value is deliberately kept near half a tile so that
+    an isolated tree still reads as a single tree rather than as a blob.
+
+    Everything here is a *display* quantity in tiles. The observed positions
+    are never touched and the number of drawn glyphs is always the number of
+    observed trees: the function is called once per observed tree.
+    """
+    return max(TREE_CANOPY_TILES, tree_shape(shape) * TREE_CANOPY_FOOTPRINT_FACTOR)
 
 
 def nature_fingerprint(entities):

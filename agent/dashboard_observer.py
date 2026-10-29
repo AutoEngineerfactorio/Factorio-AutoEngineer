@@ -14,19 +14,23 @@ from dashboard_feed import (
 )
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
+from observation_coordinator import CATALOG, MAP, STATUS
+from observation_service import ObservationService
 from session_safety import ConsoleControl
 
-VIEW_ARGUMENTS = {"catalogPage", "catalogPageSize", "mapChunkX", "mapChunkY"}
+VIEW_ARGUMENTS = {"catalogPage", "catalogPageSize", "mapChunkX", "mapChunkY",
+                  "catalogOnly", "noCatalog"}
 
-MAX_CHUNKS_PER_CYCLE = 8
+MAX_CHUNKS_PER_CYCLE = 1
 """Upper bound on chunks observed in one observer cycle."""
 
 
 class ViewOnly:
     """Read-only wrapper around the restricted backend view tool."""
 
-    def __init__(self, session):
+    def __init__(self, session, *, catalog_only=False):
         self.session = session
+        self.catalog_only = catalog_only
 
     async def call_tool(self, name, arguments=None):
         args = dict(arguments or {})
@@ -44,6 +48,18 @@ class ViewOnly:
             raise ValueError("Map chunk coordinates must be given together")
         if chunk_x is not None:
             validate_chunk_request((chunk_x, chunk_y))
+        no_catalog = args.get("noCatalog", False)
+        if type(no_catalog) is not bool:
+            raise ValueError("Invalid no-catalog flag")
+        if no_catalog and args.get("catalogOnly"):
+            # A catalog read that also suppressed the catalog would report
+            # an empty catalog, which is indistinguishable from a catalog
+            # that genuinely has no recipes.
+            raise ValueError("A catalog read cannot also suppress the catalog")
+        if self.catalog_only:
+            if chunk_x is not None:
+                raise PermissionError("Catalog observer never reads map chunks")
+            args["catalogOnly"] = True
         return await self.session.call_tool(name, arguments=args)
 
 
@@ -119,8 +135,13 @@ def start_viewport_reader(stream, requests: ViewportRequests, control=None) -> N
 
 
 def chunk_arguments(chunk_x: int, chunk_y: int) -> dict:
-    """Return the bounded backend arguments for one aligned chunk."""
-    return {"mapChunkX": chunk_x, "mapChunkY": chunk_y}
+    """Return the bounded backend arguments for one aligned chunk.
+
+    The chunk read never needs the recipe catalog, so it asks for the fast
+    path: the backend then does not enumerate any recipe, recompute the
+    technology fingerprint or enumerate any machine prototype.
+    """
+    return {"mapChunkX": chunk_x, "mapChunkY": chunk_y, "noCatalog": True}
 
 
 async def observe_chunk(session, chunk_x: int, chunk_y: int) -> dict | None:
@@ -138,42 +159,88 @@ async def observe_chunk(session, chunk_x: int, chunk_y: int) -> dict | None:
     return None
 
 
-async def observe(session, control, interval: float = 2, requests=None):
+async def observe(session, control, interval: float = 4, requests=None, *, catalog_only=False, full_catalog=False):
     feed = DashboardFeed()
-    while not control.stop.is_set():
-        try:
-            response = await asyncio.wait_for(session.call_tool("autoengineer_view"), 12)
-            if response.is_error:
-                raise ValueError("Display unavailable")
-            raw = next(json.loads(p.text) for p in response.content if p.type == "text")
-            # Publish the bounded first-page observation immediately. Recipe catalog
-            # assembly can take longer and must not block live telemetry readiness.
-            feed.publish(raw)
-            if isinstance(raw, dict) and isinstance(raw.get("catalog_status"), dict):
-                if raw["catalog_status"].get("status") == "ok":
-                    try:
-                        raw = await assemble_catalog(session, raw, stop_event=control.stop)
-                    except CatalogAssemblyError:
-                        raw = dict(raw)
-                        raw.pop("capabilities", None)
-                        raw["catalog_status"] = dict(
-                            raw["catalog_status"], status="assembly_failed"
-                        )
-            # The assembled catalog is a second optional update, not a prerequisite
-            # for displaying the already validated live world observation.
-            if isinstance(raw, dict) and raw.get('catalog_status', {}).get('status') in ('assembled', 'assembly_failed'):
+    # One shared coordinator for every observation request. Two observers
+    # that want the same observation at the same time share one request, a
+    # fresh cached observation costs no request at all, and a failing
+    # request backs off instead of retrying in a tight loop.
+    service = ObservationService()
+    try:
+        while not control.stop.is_set():
+            try:
+                # The frequent poll must not ask for the recipe catalog. The
+                # catalog adapter enumerates every recipe, recomputes the
+                # technology fingerprint and enumerates every machine
+                # prototype; at the observed live Pyanodons scale that is
+                # 10,146 recipes to emit one page of 32, measured offline at
+                # 165.5 ms of Lua per call. The fast read skips it entirely
+                # and costs 19.2 ms, an 8.6x reduction.
+                #
+                # The catalog is requested on demand instead, by the catalog
+                # observer, which uses the full path.
+                if catalog_only:
+                    args = {"catalogPageSize": 32}
+                    kind = CATALOG
+                else:
+                    args = {"noCatalog": True}
+                    kind = STATUS
+                observation = await service.observe_tool(
+                    session, "autoengineer_view", args, kind=kind)
+                if not observation.known:
+                    # A failed, backed-off or over-budget request is reported
+                    # as such. The previous value is never republished as if
+                    # it were current.
+                    raise ValueError(
+                        f"Display unavailable: {observation.reason}")
+                raw = observation.value
+                if not isinstance(raw, dict):
+                    raise ValueError("Display unavailable")
+                # Publish the bounded first-page observation immediately. Recipe catalog
+                # assembly can take longer and must not block live telemetry readiness.
                 feed.publish(raw)
-            await observe_viewport(session, feed, control, requests)
-        except Exception as exc:
-            print(f'Observer read error: {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
-            print(PREFIX + '{"schema":1,"status":"unavailable"}', flush=True)
-        try:
-            await asyncio.wait_for(control.stop.wait(), interval)
-        except TimeoutError:
-            pass
+                if catalog_only and full_catalog and isinstance(raw, dict) and isinstance(raw.get("catalog_status"), dict):
+                    if raw["catalog_status"].get("status") == "ok":
+                        try:
+                            raw = await assemble_catalog(session, raw, stop_event=control.stop,
+                                                         allow_multi_tick=catalog_only)
+                        except CatalogAssemblyError:
+                            raw = dict(raw)
+                            raw.pop("capabilities", None)
+                            raw["catalog_status"] = dict(
+                                raw["catalog_status"], status="assembly_failed"
+                            )
+                # The assembled catalog is a second optional update, not a prerequisite
+                # for displaying the already validated live world observation.
+                if isinstance(raw, dict) and raw.get('catalog_status', {}).get('status') in ('assembled', 'assembly_failed'):
+                    if catalog_only and raw['catalog_status']['status'] == 'assembled':
+                        # Pages were individually validated by the assembler; preserve
+                        # their partial/unverified status instead of pretending they
+                        # form a same-tick map snapshot.
+                        from read_only_planning import validate_capabilities
+                        validate_capabilities(raw['capabilities'], raw['surface'], raw['tick'])
+                        print(PREFIX + json.dumps({'schema': 1, **raw},
+                                                  separators=(',', ':'), allow_nan=False), flush=True)
+                    else:
+                        feed.publish(raw)
+                if catalog_only:
+                    return  # A catalog fetch is on-demand, never a four-second polling loop.
+                await observe_viewport(session, feed, control, requests, service)
+            except Exception as exc:
+                print(f'Observer read error: {type(exc).__name__}: {exc}', file=sys.stderr, flush=True)
+                print(PREFIX + '{"schema":1,"status":"unavailable"}', flush=True)
+                if catalog_only:
+                    return  # Never retry a failed expensive catalog sweep automatically.
+            try:
+                await asyncio.wait_for(control.stop.wait(), interval)
+            except TimeoutError:
+                pass
+    finally:
+        service.close()
 
 
-async def observe_viewport(session, feed, control, requests) -> None:
+async def observe_viewport(session, feed, control, requests,
+                           service: ObservationService | None = None) -> None:
     """Observe the chunks the dashboard is currently showing.
 
     Only chunks that are missing, stale or partial are requested, so a
@@ -195,15 +262,22 @@ async def observe_viewport(session, feed, control, requests) -> None:
         limit=request["limit"],
     )
     outstanding = []
+    more_needed = False
     for chunk_x, chunk_y in wanted:
         if control.stop.is_set():
             return
         if not feed.cache.needs_refresh(chunk_x, chunk_y):
             continue
         if len(outstanding) >= MAX_CHUNKS_PER_CYCLE:
+            more_needed = True
             break
         outstanding.append((chunk_x, chunk_y))
-    for chunk_x, chunk_y in outstanding:
+    for request_number, (chunk_x, chunk_y) in enumerate(outstanding):
+        # Spread costly RCON/MCP reads across frames instead of issuing an
+        # eight-chunk burst while the player is moving. Keep the full
+        # requested viewport; limiting chunks here would leave gaps.
+        if request_number:
+            await asyncio.sleep(0.15)
         if control.stop.is_set():
             return
         # A newer viewport request supersedes the remaining chunks.
@@ -212,7 +286,20 @@ async def observe_viewport(session, feed, control, requests) -> None:
             # here caused panned regions never to be fetched.
             return
         try:
-            raw = await observe_chunk(session, chunk_x, chunk_y)
+            if service is not None:
+                # The chunk read goes through the shared coordinator, so two
+                # observers that want the same chunk share one request and a
+                # failing request backs off instead of retrying tightly.
+                observation = await service.observe_tool(
+                    session, "autoengineer_view",
+                    chunk_arguments(chunk_x, chunk_y), kind=MAP,
+                    key=service.coordinator.key(
+                        MAP, chunk_x=chunk_x, chunk_y=chunk_y))
+                raw = observation.value if observation.known else None
+                if raw is not None and not isinstance(raw, dict):
+                    raw = None
+            else:
+                raw = await observe_chunk(session, chunk_x, chunk_y)
         except Exception:
             raw = None
         if raw is None:
@@ -221,6 +308,10 @@ async def observe_viewport(session, feed, control, requests) -> None:
             feed.publish(raw)
         except ValueError:
             continue
+    if more_needed and requests._pending is None and not control.stop.is_set():
+        # Retain the uncompleted viewport for the next 4-second cycle.
+        # Never overwrite a newer pan/zoom request.
+        requests.offer(request)
 
 
 async def main():
@@ -233,9 +324,16 @@ async def main():
             async with stdio_client(mcp_parameters()) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
-                    await observe(ViewOnly(session), control, requests=requests)
+                    catalog_only = os.environ.get("AUTOENGINEER_CATALOG_ONLY") == "1"
+                    await observe(ViewOnly(session, catalog_only=catalog_only), control,
+                                  requests=requests, catalog_only=catalog_only,
+                                  full_catalog=os.environ.get("AUTOENGINEER_CATALOG_FULL") == "1")
+                    if catalog_only:
+                        return
         except Exception:
             print(PREFIX + '{"schema":1,"status":"unavailable"}', flush=True)
+            if os.environ.get("AUTOENGINEER_CATALOG_ONLY") == "1":
+                return  # Do not repeatedly hammer a failed catalog read.
             try:
                 await asyncio.wait_for(control.stop.wait(), 3)
             except TimeoutError:

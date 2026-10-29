@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
 from app_runtime import component_command
-from launcher_services import Profile, Supervisor
+from launcher_services import Profile, Rcon, Supervisor
 
 
 class LauncherTests(unittest.TestCase):
@@ -89,8 +89,111 @@ class LauncherTests(unittest.TestCase):
         self.path.write_text(json.dumps(self.d))
         return Profile(self.path)
 
+    def test_registered_status_health_has_no_console_lua(self):
+        fixture = {
+            "protocol": 1, "status": "ok", "tick": 1234,
+            "connected_players": 1, "x": 10.5, "y": -3.0,
+            "control": {
+                "walking": False, "lease_active": False,
+                "character_control": True,
+            },
+        }
+        rcon = object.__new__(Rcon)
+        with patch.object(Rcon, "command", return_value=json.dumps(fixture)) as run:
+            result = rcon.health()
+        run.assert_called_once_with("/autoengineer-observe status")
+        self.assertEqual(result["tick"], 1234)
+        self.assertEqual((result["x"], result["y"]), (10.5, -3.0))
+        self.assertEqual(result["players"], 1)
+        self.assertTrue(result["character"] and result["stopped"])
+        self.assertFalse(result["walking"])
+
+    def test_registered_status_is_fail_closed_on_bad_data(self):
+        good = {
+            "protocol": 1, "status": "ok", "tick": 1,
+            "connected_players": 1, "x": 0, "y": 0,
+            "control": {
+                "walking": False, "lease_active": False,
+                "character_control": True,
+            },
+        }
+        bad = [
+            None, {}, {**good, "protocol": 2},
+            {**good, "control": {**good["control"], "walking": 0}},
+            {**good, "x": float("nan")},
+            {**good, "connected_players": 2},
+            {**good, "tick": -1}, {**good, "status": "error"},
+        ]
+        for response in bad:
+            with self.subTest(response=response):
+                with patch.object(Rcon, "command", return_value=json.dumps(response)):
+                    with self.assertRaises(ValueError):
+                        object.__new__(Rcon).health()
+
+    def test_not_joined_server_cannot_be_saved(self):
+        response = {"protocol": 1, "status": "unavailable",
+                    "reason": "no_connected_player_with_character"}
+        with patch.object(Rcon, "command", return_value=json.dumps(response)):
+            result = object.__new__(Rcon).health()
+        self.assertFalse(result["character"])
+        self.assertFalse(result["stopped"])
+
+    def test_registered_status_active_lease_blocks_save(self):
+        fixture = {
+            "protocol": 1, "status": "ok", "tick": 5,
+            "connected_players": 1, "x": 0, "y": 0,
+            "control": {"walking": True, "lease_active": True,
+                        "character_control": True},
+        }
+        with patch.object(Rcon, "command", return_value=json.dumps(fixture)):
+            result = object.__new__(Rcon).health()
+        self.assertFalse(result["stopped"])
+        self.assertTrue(result["walking"])
+
     def test_valid_isolated_host(self):
         self.assertEqual(self.profile().data["game_mode"], "graphical-host")
+
+    def test_only_new_launcher_owned_inference_is_lower_priority(self):
+        supervisor = Supervisor(self.profile())
+        with patch("launcher_services.subprocess.Popen") as create:
+            supervisor.spawn("llama", ["fixture-model"])
+            ai_flags = create.call_args.kwargs["creationflags"]
+            supervisor.spawn("host", ["fixture-factorio"])
+            game_flags = create.call_args.kwargs["creationflags"]
+            supervisor.spawn("dashboard", ["fixture-dashboard"])
+            ui_flags = create.call_args.kwargs["creationflags"]
+        if os.name == "nt":
+            self.assertTrue(ai_flags & subprocess.BELOW_NORMAL_PRIORITY_CLASS)
+            self.assertFalse(game_flags & subprocess.BELOW_NORMAL_PRIORITY_CLASS)
+            self.assertFalse(ui_flags & subprocess.BELOW_NORMAL_PRIORITY_CLASS)
+        else:
+            self.assertEqual((ai_flags, game_flags, ui_flags), (0, 0, 0))
+        self.assertEqual(supervisor.attached, {})
+
+    def test_graphical_host_refuses_other_factorio_installation(self):
+        supervisor = Supervisor(self.profile())
+        try:
+            with patch.object(supervisor, "matching", return_value=[]), \
+                 patch.object(supervisor, "factorio_instances", return_value=[12345]), \
+                 patch.object(supervisor, "spawn") as start_process:
+                with self.assertRaisesRegex(RuntimeError, "refusing a second graphical host"):
+                    supervisor.start_all()
+                start_process.assert_not_called()
+        finally:
+            supervisor.release()
+
+    def test_graphical_host_refuses_two_existing_instances(self):
+        supervisor = Supervisor(self.profile())
+        matched = Mock()
+        try:
+            with patch.object(supervisor, "matching", return_value=[matched]), \
+                 patch.object(supervisor, "factorio_instances", return_value=[111, 222]), \
+                 patch.object(supervisor, "spawn") as start_process:
+                with self.assertRaisesRegex(RuntimeError, "refusing a second graphical host"):
+                    supervisor.start_all()
+                start_process.assert_not_called()
+        finally:
+            supervisor.release()
 
     def test_profile_must_be_explicit_test(self):
         self.d["test_profile"] = False

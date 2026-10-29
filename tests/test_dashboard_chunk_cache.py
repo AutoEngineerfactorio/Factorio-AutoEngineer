@@ -150,5 +150,37 @@ class ChunkCacheTests(unittest.TestCase):
             self.cache.store(bad, tick=1)
 
 
+class ConfigurableChunkCacheTests(unittest.TestCase):
+    """The chunk cache takes its bounds from the settings."""
+
+    def test_the_default_bounds_are_bounded(self):
+        cache = ChunkCache()
+        self.assertGreaterEqual(cache.max_chunks, 1)
+        self.assertGreater(cache.max_age_seconds, 0)
+
+    def test_an_explicit_bound_is_used(self):
+        cache = ChunkCache(max_chunks=5, max_age_seconds=30.0)
+        self.assertEqual(cache.max_chunks, 5)
+        self.assertEqual(cache.max_age_seconds, 30.0)
+
+    def test_the_configured_bounds_are_used(self):
+        import dashboard_chunk_cache as module
+
+        original = module._configured_cache_limits
+        module._configured_cache_limits = lambda: (11, 45.0)
+        try:
+            cache = ChunkCache()
+            self.assertEqual(cache.max_chunks, 11)
+            self.assertEqual(cache.max_age_seconds, 45.0)
+        finally:
+            module._configured_cache_limits = original
+
+    def test_an_invalid_bound_is_refused(self):
+        with self.assertRaises(ValueError):
+            ChunkCache(max_chunks=0)
+        with self.assertRaises(ValueError):
+            ChunkCache(max_age_seconds=0)
+
+
 if __name__ == "__main__":
     unittest.main()

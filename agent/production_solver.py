@@ -4,18 +4,35 @@ provided machine factors, sustained input throughputs, power budget and surface.
 Those inputs are not independently observed or validated against a live game.
 The separate gears fixture is synthetic offline arithmetic, not a factory proof.
 
-It does not solve multi-recipe or multi-product flow balance, optimize real
-recipe/machine alternatives, or verify machine/module/beacon/quality mechanics.
-Catalyst inventory and returns, cyclic/recycling flows, stochastic yields,
-fluid constraints and temperatures are unsupported. Spoilage is only a rough
-one-second multiplier. Caller-supplied rate measurements are not collected or
-proven live here. R06 and live-game acceptance remain incomplete.
+The fixture estimator itself does not solve multi-recipe or multi-product flow
+balance, optimize real recipe/machine alternatives, or verify machine/module/
+beacon/quality mechanics. Catalyst inventory and returns and cyclic/recycling
+flows remain unsupported there. Spoilage is only a rough one-second multiplier.
+Caller-supplied rate measurements are not collected or proven live here.
+
+The separate observed-catalog path (:func:`build_observed_recipe` and
+:func:`compute_target_production`) reads the backend's observed recipe rows
+and applies the effective-yield model, so a bounded, probabilistic or spoiled
+output is reported with its bounds instead of one falsely precise number.
+That path still makes no live-throughput, buildability or power claim.
 """
 
 import math
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal, Optional
+
+try:
+    from .effective_yield import combined_target_yield
+except ImportError:  # pragma: no cover - exercised by the direct-import path
+    if 'agent' in sys.modules:
+        from agent.effective_yield import combined_target_yield
+    else:
+        _REPO_ROOT = str(Path(__file__).resolve().parents[1])
+        if _REPO_ROOT not in sys.path:
+            sys.path.insert(0, _REPO_ROOT)
+        from agent.effective_yield import combined_target_yield
 
 # Handle both relative and direct imports
 try:
@@ -24,12 +41,22 @@ except ImportError:
     if 'agent' in sys.modules:
         from agent.r06_fixture_chain import base_gears_chain
     else:
-        sys.path.insert(0, '.')
+        # Resolve the repository root from this file, not from the working
+        # directory. The dashboard spawns its observer child with a working
+        # directory that is not the repository root, so a cwd-relative path
+        # made "import agent.r06_fixture_chain" fail with ModuleNotFoundError
+        # and the observer then published only {"status":"unavailable"}.
+        _REPO_ROOT = str(Path(__file__).resolve().parents[1])
+        if _REPO_ROOT not in sys.path:
+            sys.path.insert(0, _REPO_ROOT)
         import agent.r06_fixture_chain
         base_gears_chain = agent.r06_fixture_chain.base_gears_chain
 
 # Production status values
-ProductionStatus = Literal["unavailable", "infeasible", "partial", "estimated", "verified", "measured"]
+ProductionStatus = Literal[
+    "unavailable", "infeasible", "partial", "estimated", "verified", "measured",
+    "unsupported",
+]
 
 
 @dataclass
@@ -81,6 +108,124 @@ class Machine:
     beacon_bonus: float = 0.0  # from beacon
     quality_index: Optional[int] = None
     enabled: bool = True
+
+
+@dataclass
+class ObservedRecipe:
+    """One observed catalog recipe bound to its effective output yield.
+
+    The recipe rows come from the backend's observed catalog. The output
+    amount is **not** the nominal ``amount``: it is the guaranteed yield of
+    the target product, and the bounds and the reasons are kept so a caller
+    never sees one falsely precise number.
+    """
+
+    name: str
+    crafting_time_seconds: float
+    products: list[dict[str, Any]] = field(default_factory=list)
+    ingredients: list[dict[str, Any]] = field(default_factory=list)
+    target_type: str = "item"
+    target_name: str = ""
+    #: Guaranteed units of the target per craft, or None when the yield is
+    #: uncertain. A bounded or probabilistic output has no single amount.
+    output_per_craft: Optional[float] = None
+    output_minimum: Optional[float] = None
+    output_maximum: Optional[float] = None
+    output_expected: Optional[float] = None
+    output_probability: Optional[float] = None
+    output_deterministic: bool = True
+    output_reasons: tuple[str, ...] = ()
+    #: The crafting speed of the machine that would run this recipe. Factorio
+    #: 2.1.23 does not report a machine for a recipe in the recipe catalog, so
+    #: this stays None unless the caller established it.
+    machine_speed: Optional[float] = None
+    machine_name: Optional[str] = None
+    machine_energy_kw: Optional[float] = None
+
+    @property
+    def yield_is_uncertain(self) -> bool:
+        """True when the output cannot be stated as one fixed number."""
+        return not self.output_deterministic or self.output_expected is None
+
+    def crafts_per_second(self) -> Optional[float]:
+        """Return the crafts per second at the established machine speed.
+
+        The crafting time alone is not enough: Factorio's crafting speed
+        divides the recipe time, so a machine speed of 2 halves the craft
+        duration. Without an established machine speed the craft rate is not
+        asserted.
+        """
+        if self.machine_speed is None or self.machine_speed <= 0:
+            return None
+        if self.crafting_time_seconds <= 0:
+            return None
+        return self.machine_speed / self.crafting_time_seconds
+
+    def units_per_second(self) -> Optional[float]:
+        """Return the guaranteed output units per second, or None."""
+        rate = self.crafts_per_second()
+        if rate is None or self.output_per_craft is None:
+            return None
+        return rate * self.output_per_craft
+
+
+@dataclass
+class TargetProduction:
+    """The result of a production-target request.
+
+    ``status`` is ``"estimated"`` when the requested rate is computed from
+    established data, ``"partial"`` when the rate is bounded but not exact,
+    and ``"unsupported"`` when the observed data cannot establish it.
+    """
+
+    status: ProductionStatus = "unavailable"
+    target: str = ""
+    target_type: str = "item"
+    requested_per_second: float = 0.0
+    requested_per_minute: float = 0.0
+    achievable_per_second: Optional[float] = None
+    achievable_per_minute: Optional[float] = None
+    #: The guaranteed output per craft and its bounds.
+    output_per_craft: Optional[float] = None
+    output_minimum: Optional[float] = None
+    output_maximum: Optional[float] = None
+    output_expected: Optional[float] = None
+    output_probability: Optional[float] = None
+    crafts_per_second: Optional[float] = None
+    machine_count: Optional[float] = None
+    machine_name: Optional[str] = None
+    machine_speed: Optional[float] = None
+    power_kw: Optional[float] = None
+    recipe: Optional[str] = None
+    alternatives: list[dict[str, Any]] = field(default_factory=list)
+    unsupported: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return a JSON-safe description of the target production."""
+        return {
+            "status": self.status,
+            "target": self.target,
+            "target_type": self.target_type,
+            "requested_per_second": self.requested_per_second,
+            "requested_per_minute": self.requested_per_minute,
+            "achievable_per_second": self.achievable_per_second,
+            "achievable_per_minute": self.achievable_per_minute,
+            "output_per_craft": self.output_per_craft,
+            "output_minimum": self.output_minimum,
+            "output_maximum": self.output_maximum,
+            "output_expected": self.output_expected,
+            "output_probability": self.output_probability,
+            "crafts_per_second": self.crafts_per_second,
+            "machine_count": self.machine_count,
+            "machine_name": self.machine_name,
+            "machine_speed": self.machine_speed,
+            "power_kw": self.power_kw,
+            "recipe": self.recipe,
+            "alternatives": list(self.alternatives),
+            "unsupported": list(self.unsupported),
+            "notes": list(self.notes),
+        }
 
 
 @dataclass
@@ -1262,6 +1407,275 @@ def create_recipe(
         surface_eligible=surface_eligible,
         spoilage_rate=spoilage_rate,
         inputs=normalized_inputs,
+    )
+
+
+#: The maximum number of observed recipes that one target request may
+#: consider. The bound keeps a large modpack catalog from making one request
+#: unbounded.
+MAX_TARGET_CANDIDATES = 512
+
+
+def _finite_number(value: Any) -> Optional[float]:
+    """Return the value as a finite float, or None.
+
+    A bool is rejected even though ``bool`` is a subclass of ``int``: a
+    boolean is a flag, never an amount.
+    """
+    if type(value) not in (int, float) or isinstance(value, bool):
+        return None
+    number = float(value)
+    if not math.isfinite(number):
+        return None
+    return number
+
+
+def build_observed_recipe(
+    recipe: dict[str, Any],
+    target_type: str = "item",
+    target_name: str = "",
+    *,
+    machine_speed: Optional[float] = None,
+    machine_name: Optional[str] = None,
+    machine_energy_kw: Optional[float] = None,
+) -> ObservedRecipe:
+    """Build an :class:`ObservedRecipe` from one observed catalog row.
+
+    The output amount comes from the **effective yield** of the target
+    product, not from the nominal ``amount``. When the yield is uncertain the
+    guaranteed amount stays ``None`` and the bounds and reasons are kept, so
+    no caller can mistake a bounded output for a fixed one.
+    """
+    if not isinstance(recipe, dict):
+        raise ValueError("An observed recipe row is required")
+    name = recipe.get("name")
+    if not isinstance(name, str) or not name:
+        raise ValueError("An observed recipe row needs a name")
+    crafting_time_seconds = _finite_number(recipe.get("crafting_time"))
+    if crafting_time_seconds is None or crafting_time_seconds <= 0:
+        raise ValueError("An observed recipe row needs a positive crafting time")
+    products = recipe.get("products")
+    if not isinstance(products, list) or not products:
+        raise ValueError("An observed recipe row needs its observed products")
+
+    if not target_name:
+        target_name = products[0].get("name", "")
+    target = combined_target_yield(products, target_type, target_name)
+
+    return ObservedRecipe(
+        name=name,
+        crafting_time_seconds=crafting_time_seconds,
+        products=[dict(part) for part in products],
+        ingredients=[dict(part) for part in (recipe.get("ingredients") or [])],
+        target_type=target_type,
+        target_name=target_name,
+        output_per_craft=target.guaranteed,
+        output_minimum=target.minimum,
+        output_maximum=target.maximum,
+        output_expected=target.expected,
+        output_probability=target.probability,
+        output_deterministic=target.deterministic,
+        output_reasons=tuple(target.reasons),
+        machine_speed=machine_speed,
+        machine_name=machine_name,
+        machine_energy_kw=machine_energy_kw,
+    )
+
+
+def compute_target_production(
+    recipes: list[dict[str, Any]],
+    target_type: str,
+    target_name: str,
+    per_second: Optional[float] = None,
+    per_minute: Optional[float] = None,
+    *,
+    machine_speed: Optional[float] = None,
+    machine_name: Optional[str] = None,
+    machine_energy_kw: Optional[float] = None,
+) -> TargetProduction:
+    """Compute the production of one target from observed catalog recipes.
+
+    The request states the wanted rate in items per second **or** in items
+    per minute. Exactly one of them may be given. The result reports the
+    achievable rate, the machine count and the alternative production paths
+    when the observed data establishes them, and it names every mechanic it
+    could not model instead of silently assuming one.
+    """
+    if target_type not in ("item", "fluid"):
+        raise ValueError("Target type must be item or fluid")
+    if not isinstance(target_name, str) or not target_name:
+        raise ValueError("A target name is required")
+    if (per_second is None) == (per_minute is None):
+        raise ValueError("Exactly one of per_second or per_minute is required")
+    if machine_speed is not None:
+        checked_speed = _finite_number(machine_speed)
+        if checked_speed is None or checked_speed <= 0:
+            raise ValueError("The crafting machine speed must be finite and positive")
+        machine_speed = checked_speed
+    if machine_energy_kw is not None:
+        checked_power = _finite_number(machine_energy_kw)
+        if checked_power is None or checked_power < 0:
+            raise ValueError("The machine power draw must be finite and nonnegative")
+        machine_energy_kw = checked_power
+    if per_second is not None:
+        requested_per_second = _finite_number(per_second)
+        if requested_per_second is None or requested_per_second <= 0:
+            raise ValueError("The requested rate must be finite and positive")
+    else:
+        requested_per_minute = _finite_number(per_minute)
+        if requested_per_minute is None or requested_per_minute <= 0:
+            raise ValueError("The requested rate must be finite and positive")
+        requested_per_second = requested_per_minute / 60.0
+
+    unsupported: list[str] = []
+    notes = [
+        "Offline arithmetic over the observed catalog; no in-game throughput "
+        "was measured and no buildability is claimed.",
+    ]
+
+    candidates: list[ObservedRecipe] = []
+    seen: set[str] = set()
+    for row in recipes or []:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("name")
+        if not isinstance(name, str) or name in seen:
+            continue
+        try:
+            observed = build_observed_recipe(
+                row, target_type, target_name,
+                machine_speed=machine_speed,
+                machine_name=machine_name,
+                machine_energy_kw=machine_energy_kw,
+            )
+        except ValueError:
+            # A recipe that cannot be bound to the target is not a candidate.
+            continue
+        if observed.target_name != target_name:
+            continue
+        seen.add(name)
+        candidates.append(observed)
+        if len(candidates) >= MAX_TARGET_CANDIDATES:
+            unsupported.append(
+                f"only the first {MAX_TARGET_CANDIDATES} candidate recipes "
+                "were considered"
+            )
+            break
+
+    if not candidates:
+        return TargetProduction(
+            status="unavailable",
+            target=target_name,
+            target_type=target_type,
+            requested_per_second=requested_per_second,
+            requested_per_minute=requested_per_second * 60.0,
+            unsupported=["no observed recipe produces this target"],
+            notes=notes,
+        )
+
+    usable = [entry for entry in candidates if entry.output_per_craft is not None]
+    uncertain = [entry for entry in candidates if entry.output_per_craft is None]
+    for entry in uncertain:
+        for reason in entry.output_reasons:
+            if reason not in unsupported:
+                unsupported.append(reason)
+    if not usable:
+        return TargetProduction(
+            status="unsupported",
+            target=target_name,
+            target_type=target_type,
+            requested_per_second=requested_per_second,
+            requested_per_minute=requested_per_second * 60.0,
+            output_minimum=uncertain[0].output_minimum,
+            output_maximum=uncertain[0].output_maximum,
+            output_expected=uncertain[0].output_expected,
+            output_probability=uncertain[0].output_probability,
+            unsupported=unsupported or [
+                "the observed output yield is not a guaranteed amount"],
+            notes=notes,
+        )
+
+    def _rate(entry: ObservedRecipe) -> Optional[float]:
+        return entry.units_per_second()
+
+    def _craft_rate(entry: ObservedRecipe) -> Optional[float]:
+        return entry.crafts_per_second()
+
+    rated = [(entry, _rate(entry)) for entry in usable]
+    rated = [(entry, rate) for entry, rate in rated if rate is not None and rate > 0]
+    if not rated:
+        unsupported.append(
+            "no crafting machine speed was established, so the craft rate "
+            "cannot be computed"
+        )
+        return TargetProduction(
+            status="unsupported",
+            target=target_name,
+            target_type=target_type,
+            requested_per_second=requested_per_second,
+            requested_per_minute=requested_per_second * 60.0,
+            unsupported=unsupported,
+            notes=notes,
+        )
+
+    # The fastest established path is the recommended one.
+    rated.sort(key=lambda pair: pair[1], reverse=True)
+    best, best_rate = rated[0]
+
+    alternatives = []
+    for entry, rate in rated[1:]:
+        alternatives.append({
+            "recipe": entry.name,
+            "units_per_second": rate,
+            "units_per_minute": rate * 60.0,
+            "machine_count": (
+                requested_per_second / rate if rate > 0 else None
+            ),
+            "output_per_craft": entry.output_per_craft,
+        })
+
+    machine_count = requested_per_second / best_rate
+    power = (
+        machine_energy_kw * machine_count
+        if machine_energy_kw is not None else None
+    )
+    if machine_energy_kw is None:
+        unsupported.append(
+            "the crafting machine's power draw was not established, so the "
+            "required power is unknown"
+        )
+    if best.machine_speed is None:
+        unsupported.append(
+            "the crafting machine's speed was not established, so the machine "
+            "count is not asserted"
+        )
+
+    status: ProductionStatus = "estimated"
+    if best.yield_is_uncertain:
+        status = "partial"
+
+    return TargetProduction(
+        status=status,
+        target=target_name,
+        target_type=target_type,
+        requested_per_second=requested_per_second,
+        requested_per_minute=requested_per_second * 60.0,
+        achievable_per_second=best_rate,
+        achievable_per_minute=best_rate * 60.0,
+        output_per_craft=best.output_per_craft,
+        output_minimum=best.output_minimum,
+        output_maximum=best.output_maximum,
+        output_expected=best.output_expected,
+        output_probability=best.output_probability,
+        crafts_per_second=_craft_rate(best),
+        machine_count=machine_count,
+        machine_name=machine_name,
+        machine_speed=machine_speed,
+        power_kw=power,
+        recipe=best.name,
+        alternatives=alternatives,
+        unsupported=unsupported,
+        notes=notes,
     )
 
 

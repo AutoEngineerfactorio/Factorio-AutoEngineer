@@ -52,7 +52,7 @@ def constrained_second(*, iron_ore_per_second=13.0, copper_ore_per_second=4.5,
     target_iron = 2 * gear_target + circuit_target          # 13 plates/s
     target_copper = 3 * circuit_target / 2                 # 4.5 plates/s
     target_cable = 3 * circuit_target                      # 9 cables/s
-    target_capacities = {
+    target_capacities: dict[str, float] = {
         "iron_ore_supply": ore / target_iron,
         "copper_ore_supply": copper_ore / target_copper,
         "iron_furnaces": (iron_furnaces * 2 / 3.2) / target_iron,
@@ -64,7 +64,7 @@ def constrained_second(*, iron_ore_per_second=13.0, copper_ore_per_second=4.5,
         "cable_assemblers": (cable_assemblers * .75 / .5 * 2) / target_cable,
         "power_fraction": power,
     }
-    bottleneck = min(target_capacities, key=lambda key: target_capacities[key])
+    bottleneck = min(target_capacities.items(), key=lambda item: item[1])[0]
     fraction = min(1.0, target_capacities[bottleneck])
     products = {
         "iron-plate": target_iron * fraction,

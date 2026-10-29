@@ -3,8 +3,8 @@ import re
 import urllib.request
 
 from .autoengineer_config import get_settings
+from .runtime_settings import model_endpoint, model_name, request_timeout
 
-API = get_settings()["llm_api_url"]
 ALLOWED = {"walk", "mine", "craft", "observe", "wait"}
 FORBIDDEN = {"execute_lua", "teleport", "spawn_item", "create_entity"}
 
@@ -24,12 +24,12 @@ state = {
 def api(endpoint, payload=None):
     data = None if payload is None else json.dumps(payload).encode()
     request = urllib.request.Request(
-        API + endpoint,
+        model_endpoint() + endpoint,
         data=data,
         headers={"Content-Type": "application/json"},
         method="POST" if data else "GET",
     )
-    with urllib.request.urlopen(request, timeout=120) as response:
+    with urllib.request.urlopen(request, timeout=request_timeout()) as response:
         return json.load(response)
 
 
@@ -68,7 +68,7 @@ def validate(action):
 
 
 def main():
-    model_id = get_settings()["llm_model"]
+    model_id = model_name() or get_settings()["llm_model"]
     print("Connected model:", model_id)
 
     response = api(

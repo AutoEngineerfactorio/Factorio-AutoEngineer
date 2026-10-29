@@ -130,8 +130,16 @@ class ViewportRequestChannelTests(unittest.TestCase):
         self.assertIsNone(requests.take())
 
     def test_backend_chunk_arguments_are_bounded_integers(self):
+        """The chunk arguments name the chunk and skip the recipe catalog.
+
+        A map chunk never needs the recipe catalog, so the request asks
+        for the fast path. The backend then does not enumerate any recipe,
+        recompute the technology fingerprint or enumerate any machine
+        prototype.
+        """
         self.assertEqual(
-            chunk_arguments(-3, 7), {"mapChunkX": -3, "mapChunkY": 7}
+            chunk_arguments(-3, 7),
+            {"mapChunkX": -3, "mapChunkY": 7, "noCatalog": True}
         )
 
 

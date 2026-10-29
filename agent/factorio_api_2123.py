@@ -75,7 +75,15 @@ def prototype_api() -> dict:
 
 
 def _classes(stage: str) -> list:
-    return runtime_api()["classes"] if stage == "runtime" else prototype_api()["classes"]
+    """Return the class list of the requested stage.
+
+    The 2.1.23 archive stores the two stages under different keys: the
+    runtime (control stage) document keeps its classes under ``classes`` and
+    the prototype (data stage) document keeps them under ``prototypes``.
+    """
+    if stage == "runtime":
+        return runtime_api()["classes"]
+    return prototype_api()["prototypes"]
 
 
 def find_class(name: str, stage: str = "runtime") -> dict:
@@ -100,11 +108,20 @@ def find_method(class_name: str, method_name: str, stage: str = "runtime") -> di
 
 
 def find_property(class_name: str, property_name: str, stage: str = "runtime") -> dict:
-    """Return the exact 2.1.23 property definition, or raise."""
+    """Return the exact 2.1.23 property definition, or raise.
+
+    The 2.1.23 archive stores a class's readable members under two different
+    keys depending on the stage. A **runtime** class (control stage) keeps
+    them in ``attributes``; a **prototype** class (data stage) keeps them in
+    ``properties``. Both are searched, so a runtime attribute such as
+    ``LuaEntityPrototype.module_inventory_size`` resolves instead of being
+    reported as missing.
+    """
     entry = find_class(class_name, stage)
-    for prop in entry.get("properties", []):
-        if prop.get("name") == property_name:
-            return prop
+    for group in ("attributes", "properties"):
+        for prop in entry.get(group, []):
+            if prop.get("name") == property_name:
+                return prop
     raise UnknownApiError("property", f"{class_name}.{property_name}")
 
 

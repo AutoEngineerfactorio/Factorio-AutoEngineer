@@ -293,17 +293,17 @@ def telemetry_view_model(telemetry):
         for row in group["series"]:
             input_rate = _mean_recent(row["input"])
             output_rate = _mean_recent(row["output"])
-            if input_rate >= 2 and input_rate > output_rate * 1.2 + 0.5:
+            if output_rate >= 2 and output_rate > input_rate * 1.2 + 0.5:
                 recommendations.append({
                     "severity": "candidate",
                     "title": f"Check supply for {material_type}:{row['name']}",
                     "detail": (
-                        f"Observed consumption averaged {input_rate:.2f}/min versus "
-                        f"production {output_rate:.2f}/min in the recent flow samples. "
+                        f"Observed consumption averaged {output_rate:.2f}/min versus "
+                        f"production {input_rate:.2f}/min in the recent flow samples. "
                         "This is a possible upstream supply constraint, not proof of a shortage; "
                         "check inventory, external supply, and the upstream chain."
                     ),
-                    "score": input_rate - output_rate,
+                    "score": output_rate - input_rate,
                 })
     if power["status"] == "ok":
         for network in power["networks"]:

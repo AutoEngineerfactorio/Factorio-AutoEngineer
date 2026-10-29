@@ -11,6 +11,34 @@ except ImportError:
 
 MOD = Path(__file__).resolve().parents[1] / "factorio-mod/autoengineer-input_2.1.23"
 
+#: The observation modules the control stage requires by mod-local name.
+OBSERVATION_MODULES = ("observation", "observation_parse", "observation_telemetry",
+                       "observation_map", "observation_terrain", "observation_overlay",
+                       "observation_overlay_entities", "observation_inventory",
+                       "observation_capabilities", "observation_catalog")
+
+
+def preload_observation_modules(lua) -> None:
+    """Register the mod's own Lua modules under the names Factorio resolves.
+
+    Factorio resolves ``require`` **relative to the mod root**, with the
+    path segments separated by dots, so ``require("observation")`` loads
+    the mod's ``observation.lua``. The ``__modname__`` prefix names
+    *another* mod; the live 2.1.23 server rejected ``__modname__/observation``
+    with "Path __modname__/observation.lua does not match any enabled mod".
+
+    The test runtime has no mod loader, so the same mapping is registered
+    explicitly under the plain mod-local name.
+    """
+    for name in OBSERVATION_MODULES:
+        source = MOD / f"{name}.lua"
+        if not source.is_file():
+            continue
+        lua.execute(
+            f'package.preload["{name}"] = function() '
+            f'  return dofile("{source.as_posix()}") end'
+        )
+
 
 def lua_globals(lua: LuaRuntime) -> Any:
     """Expose dynamically defined Lua globals only at this interop boundary."""
@@ -38,7 +66,10 @@ class InputHelperTests(unittest.TestCase):
             end}
           game={get_player=function(index) if index==1 then
             return {print=function(msg) messages[#messages+1]=msg end} end end}
+          helpers={table_to_json=function(t) return 'JSON' end}
+          rcon={print=function(msg) messages[#messages+1]=msg end}
         """)
+        preload_observation_modules(lua)
         lua.execute((MOD / "control.lua").read_text())
         return lua
 
@@ -116,14 +147,18 @@ class InputHelperTests(unittest.TestCase):
         globals_ = lua_globals(lua)
         self.assertEqual(
             set(globals_.commands.registered),
-            {"autoengineer-status", "autoengineer-takeover"},
+            {"autoengineer-status", "autoengineer-takeover", "autoengineer-observe"},
         )
         self.assertNotIn("lua", globals_.commands.registered)
         self.assertNotIn("c", globals_.commands.registered)
         source = (MOD / "control.lua").read_text()
         self.assertIn('commands.add_command("autoengineer-status"', source)
         self.assertIn('commands.add_command("autoengineer-takeover"', source)
+        self.assertIn('commands.add_command("autoengineer-observe"', source)
         self.assertNotIn('"/c', source)
+        # The observation command must not be a Lua console path either.
+        self.assertNotIn("/silent-command", source)
+        self.assertNotIn('"/sc', source)
 
     def test_commands_work_when_ai_backend_is_unavailable(self):
         lua = self.runtime()

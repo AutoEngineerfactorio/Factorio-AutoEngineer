@@ -17,6 +17,95 @@ Pyanodons (pY) catalogs in a separate isolated test profile once the safe teleme
 adapter exists. This is early performance/architecture testing, **not** an R20
 gameplay acceptance claim. See [continuous modded benchmarks](docs/CONTINUOUS_MOD_BENCHMARKS.md).
 
+## Binding roadmap amendment — October 26, 2026: Universal AI Helper first
+
+**This section supersedes older delivery ordering wherever it conflicts, while retaining
+R01–R20 identifiers, safety gates, historical evidence, and future autonomy scope.**
+Factorio 2.1.23 remains the sole active runtime target.
+
+**Immediate order (no major codebase consolidation until Helper acceptance):**
+
+1. **Finish the current R09 observation-transport project (Phase 7 / Test F):** prove
+   registered-mod-command reads, telemetry, reconnect behavior, dashboard data truth,
+   achievement-warning behavior and performance **live** in both isolated vanilla
+   and full Pyanodons profiles. Test the dedicated server **and graphical client**.
+   Offline success is not live acceptance. Normal Helper reads must remain free of
+   Lua console calls; do not represent movement/gameplay writes as achievement-safe.
+2. **Finish R06 — universal production intelligence:** dynamically discover runtime
+   prototypes, modded recipes, technologies, unlocks, machines, modules, qualities,
+   surfaces and constraints. Complete multi-output, catalyst, byproduct, cyclic,
+   probabilistic, fluid, temperature, power and logistics planning; validate measured
+   versus predicted production; benchmark 1K/5K/10K-node graphs and profile budgets.
+   Reuse fingerprinted/cached catalogs; avoid expensive repeat game scans.
+3. **Finish R07 — universal Blueprint Studio:** validate the codec and blueprint books
+   in a real 2.1.23 client; generate research-aware, connected, feasible layouts,
+   with belts/inserters/pipes/power and capability-dependent circuits, trains, robots,
+   quality, platforms and mod-added entities as supported. Provide preview, revise,
+   save, import/export, provenance and explicit unsupported-capability reporting.
+   Helper mode must never place entities or execute gameplay writes.
+4. **Finish the *entire* read-only universal AI Helper + Dashboard:** integrate live
+   factory understanding, bottleneck/throughput/power diagnosis, recipe and technology
+   browsing, production targets, machine/material plans, blueprint design, research
+   recommendations and approved external blueprint/reference discovery. Every feature
+   must derive supported functionality from the active game/mod profile rather than
+   hardcoding vanilla or Pyanodons names. pY is a continuous **stress-test**, not
+   the compatibility boundary. Unobservable or unsupported mod mechanics must be
+   reported honestly rather than silently guessed.
+5. **Pass Helper Gate H1 end-to-end:** independently validate server and actual Windows
+   graphical client in vanilla and full pY, including mod data, generated blueprint
+   import, real factory predictions, performance/UPS/FPS, stale caches, failures,
+   restart/reconnect, security and achievement-safe read behavior. Record PASS/FAIL/
+   BLOCKED with evidence per profile. No offline-only or partial result closes H1.
+6. **Only after H1: full code cleanup and consolidation:** first capture test,
+   performance and dependency baselines; audit Python/Lua/C#/dashboard/test/docs,
+   remove dead paths and duplicates, combine *unnecessarily* fragmented modules,
+   simplify coordinator/telemetry/catalog ownership, and rerun all relevant tests
+   and both-profile live performance comparisons. Preserve readable cohesive
+   boundaries, contracts, safety and compatibility. The **200-line guidance limits
+   edit chunks, not Python file length**; documented atomic exceptions are allowed.
+   Small bug fixes and narrowly required refactors may occur before this phase.
+7. **After cleanup: new Semi-Autonomous gameplay development**, followed only after
+   separate acceptance and explicit authorization by Fully Autonomous development.
+   Maintain Stop, takeover, approval boundaries and existing safety tests throughout.
+
+**Numbering clarification:** the *current workstream* called “R09 Phase A/B/7
+observation transport” is distinct from the older roadmap index's **R09 —
+First self-expanding block**. Completing the former does **not** constitute
+acceptance of the latter or authorize autonomous construction.
+
+**Compatibility scope distinction:** universal *read-only Helper planning and
+blueprint design* must be built for dynamically modded content now; full automated
+third-party-mod gameplay execution/adaptation stays under later R20 gates. First
+party Space Age support is also part of Helper coverage; neither vanilla nor pY
+testing proves every mod is supported.
+
+## M5 — runtime integration, performance and model management (October 28, 2026)
+
+- [x] The Settings reach the services that use them: the model endpoint, the
+  model name and the timeout are read at every request, the observation
+  interval, the request budget and the concurrency limit reach the
+  observer, the cache limits reach the catalog pager, the chunk cache and
+  the telemetry history, and the UPS thresholds reach the guard.
+- [x] The caches are bounded and profile-aware: a cache entry belongs to a
+  profile, a game version, a mod fingerprint, a surface and a research
+  state, and a mod change invalidates the recipe, machine, research and
+  blueprint caches.
+- [x] The model can be tested without starting anything: the endpoint
+  reachability, the model discovery, the inference and the tool calling
+  are reported separately, and a reachable endpoint is never reported as
+  a capable model. No credential is ever exposed.
+- [x] The resource limits say what they do: the CPU limit is the priority
+  of the owned model process, the memory limit is **advisory** and is
+  labelled as such.
+- [x] A profile switch is refused while that profile's game runs, and the
+  reason reaches the interface.
+- [x] The offline quality gate passes: 2,913 tests, Ruff and Pyright clean.
+- [ ] The live acceptance — a real Factorio start, a real save, a real
+  observation and a real model — remains **unverified** and is reserved for
+  separate authorisation. See
+  [M5 completion](memory/M5_COMPLETION_CHECKPOINT.md) and
+  [the launcher and Settings guide](docs/UNIVERSAL_LAUNCHER_AND_SETTINGS.md).
+
 ## Helper-first delivery order — October 19, 2026
 
 This priority amendment controls delivery sequencing while preserving R01–R20

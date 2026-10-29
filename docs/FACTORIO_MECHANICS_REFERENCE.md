@@ -2,6 +2,8 @@
 
 Updated 2026-10-18. Use with [ROADMAP.md](../ROADMAP.md), [R01-R20 acceptance criteria](PLANNING_REQUIREMENTS.md), [Lua scripting/API reference](FACTORIO_SCRIPTING_API_REFERENCE.md), [uncovered systems and gaps](FACTORIO_COVERAGE_GAP_REGISTER.md), and [quirks and regression cases](FACTORIO_QUIRKS_AND_EDGE_CASES.md). This is an **indexed technical reference**, not an offline copy of the whole game manual or a substitute for live game data. Consult the linked sources and relevant runtime/prototype documentation before implementing each mechanic.
 
+**Universal recipe/mathematics agent memory:** Read [UNIVERSAL_RECIPE_MATH.md](../memory/UNIVERSAL_RECIPE_MATH.md) before modifying recipe/research catalog observation, production solvers, blueprint production math, or large-modpack support. It records performance, formulas, uncertainty and pY-specific stress-test evidence without making the core planner mod-specific.
+
 ## Mandatory evidence and compatibility rules
 
 1. **Know the actual version and content set.** Record Factorio game version/build, enabled Space Age, Quality and Elevated Rails components, enabled third-party mods/settings and their versions, force, research, surface, available prototypes, permissions, charted visibility and observation timestamp/fingerprint. First-party expansion components may be enabled separately; do not assume dependencies based on an old video or version.

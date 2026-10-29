@@ -12,6 +12,8 @@ class TelemetryView(ttk.Frame):
     def __init__(self, parent):
         super().__init__(parent, padding=8)
         self.model = None
+        self.sampled_flow_history = {}  # bounded, local samples; never full factory statistics
+        self.sampled_surface = None
         self.power_history = {}
         self.power_last_tick = {}
         self.power_current = set()
@@ -21,6 +23,7 @@ class TelemetryView(ttk.Frame):
         self.production_target = tk.StringVar()
         self.production_rate_unit = tk.StringVar(value="/s")
         self.power_network = tk.StringVar()
+        self.lightweight_flow = tk.StringVar(value="Limited live item samples: waiting")
         ttk.Label(self, textvariable=self.status, style="Section.TLabel").pack(
             anchor="w", pady=(0, 6)
         )
@@ -46,6 +49,8 @@ class TelemetryView(ttk.Frame):
         )
         unit_selector.pack(side="left", padx=4)
         unit_selector.bind("<<ComboboxSelected>>", lambda _event: self.draw_production())
+        ttk.Label(production_frame, textvariable=self.lightweight_flow,
+                  style="Muted.TLabel", wraplength=600).pack(anchor="w", pady=4)
         self.production_canvas = tk.Canvas(
             production_frame, background="#171b20", height=250, highlightthickness=0
         )
@@ -100,6 +105,21 @@ class TelemetryView(ttk.Frame):
         ).pack(anchor="w", pady=(6, 0))
 
     def update_frame(self, frame):
+        samples = frame.get("sampled_item_flow") if isinstance(frame, dict) else None
+        if samples is not None and frame.get("status") == "ok":
+            surface = frame.get("surface")
+            if surface != self.sampled_surface:
+                self.sampled_flow_history.clear()
+                self.sampled_surface = surface
+            self._record_sampled_flows(samples, frame["tick"])
+        if samples is not None and hasattr(self, "lightweight_flow"):
+            if samples:
+                lines = [f"{r['name']}: produced {r['input']:.2f}, consumed {r['output']:.2f} (per-minute flow; 10-min precision)"
+                         for r in samples]
+                self.lightweight_flow.set("Limited inventory-matched items only; NOT total factory production. "
+                                          + " | ".join(lines))
+            else:
+                self.lightweight_flow.set("No inventory-matched flow samples; factory-wide rates unavailable")
         if not isinstance(frame, dict) or frame.get("status") != "ok":
             self.status.set("Telemetry unavailable · last graph sample may be stale")
             self.power_status.set("Power telemetry unavailable")
@@ -133,6 +153,22 @@ class TelemetryView(ttk.Frame):
         self.draw_production()
         self.draw_power()
 
+    def _record_sampled_flows(self, samples, tick):
+        """Chart already-bounded samples without requesting any additional game data."""
+        now = time.monotonic()
+        for sample in samples:
+            history = self.sampled_flow_history.setdefault(sample["name"], [])
+            if history and tick < history[-1][0]:
+                history.clear()  # Game restart or surface/profile change.
+            if not history or tick > history[-1][0]:
+                history.append((tick, now, sample["input"], sample["output"]))
+        for name, history in list(self.sampled_flow_history.items()):
+            recent = [point for point in history if now - point[1] <= 120][-60:]
+            if recent:
+                self.sampled_flow_history[name] = recent
+            else:
+                del self.sampled_flow_history[name]
+
     def _update_production_targets(self):
         if self.model is None:
             return
@@ -144,6 +180,15 @@ class TelemetryView(ttk.Frame):
             for row in rows:
                 label = f"{material_type}:{row['name']}"
                 choices[label] = row
+        # The map-free observer samples just inventory-matched prototypes.
+        # Render their 10-minute average as a separate, explicitly limited trend.
+        now = time.monotonic()
+        for name, history in self.sampled_flow_history.items():
+            if history and now - history[-1][1] <= 12:
+                choices.setdefault(f"item:{name}", {
+                    "name": name, "input": [p[2] for p in history],
+                    "output": [p[3] for p in history], "source": "sampled",
+                })
         self.production_rows = choices
         labels = list(choices)
         self.production_selector.configure(values=labels)
@@ -300,16 +345,19 @@ class TelemetryView(ttk.Frame):
         from production_telemetry import convert_flow_rate
         row = choices[target.get()]
         interval = "second" if self.production_rate_unit.get() == "/s" else "minute"
-        output = [convert_flow_rate(x, interval) for x in row["output"]]
-        input_values = [convert_flow_rate(x, interval) for x in row["input"]]
+        # LuaFlowStatistics: input=production, output=consumption for items/fluids.
+        output = [convert_flow_rate(x, interval) for x in row["input"]]
+        input_values = [convert_flow_rate(x, interval) for x in row["output"]]
         unit = "items" if target.get().startswith("item:") else "fluid units"
         suffix = self.production_rate_unit.get()
         produced = output[-1] if output else 0.0
         consumed = input_values[-1] if input_values else 0.0
+        limited = row.get("source") == "sampled"
         self.production_legend.set(
             f"Produced {produced:,.2f} {unit}{suffix} · "
             f"Consumed {consumed:,.2f} {unit}{suffix} · "
-            "orange production / blue consumption · 2-second sample averages"
+            + ("10-minute average; inventory-matched only (not factory-wide)"
+             if limited else "orange production / blue consumption · 2-second sample averages")
         )
         self._draw_lines(
             self.production_canvas,
@@ -317,7 +365,9 @@ class TelemetryView(ttk.Frame):
                 ("production", output, "#e6a44e"),
                 ("consumption", input_values, "#68aee0"),
             ],
-            f"{target.get()} · units{self.production_rate_unit.get()} · 2-minute history (2s bins)",
+            (f"{target.get()} · units{self.production_rate_unit.get()} · "
+             + ("10-minute averages, sampled every ~4s" if limited
+                else "2-minute history (2s bins)")),
             "No samples",
         )
 

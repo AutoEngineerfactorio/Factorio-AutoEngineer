@@ -388,3 +388,16 @@ class FeedSafetyTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(args=args), self.assertRaises(ValueError):
                 await boundary.call_tool("autoengineer_view", args)
         raw_session.call_tool.assert_awaited_once()
+
+
+class OversizedMapFrameTests(unittest.TestCase):
+    def test_multichunk_frame_over_one_megabyte_is_allowed(self):
+        payload = PREFIX + json.dumps({"schema": 1, "status": "unavailable"})
+        payload += " " * (1048576 + 20 - len(payload))
+        self.assertEqual(parse_frame(payload), {"status": "unavailable"})
+
+    def test_over_four_megabytes_is_rejected(self):
+        payload = PREFIX + json.dumps({"schema": 1, "status": "unavailable"})
+        payload += " " * (4 * 1048576 + 1 - len(payload))
+        with self.assertRaisesRegex(ValueError, "Display frame too large"):
+            parse_frame(payload)

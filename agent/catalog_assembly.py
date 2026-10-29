@@ -5,20 +5,27 @@ import json
 import time
 
 from dashboard_feed import snapshot
+from read_only_planning import accounted_recipe_count, validate_exclusions
 
 PAGE_SIZE = 16
-MAX_CATALOG_ENTRIES = 10000
-MAX_CATALOG_PAGES = (MAX_CATALOG_ENTRIES + PAGE_SIZE - 1) // PAGE_SIZE
-MAX_ASSEMBLED_CAPABILITY_BYTES = 400000
-PAGE_TIMEOUT_SECONDS = 2
+# The backend accepts catalog pages 1..10000 and 1..32 entries per page, so
+# the addressable catalog is bounded by the page count, not by a flat entry
+# cap. A large modpack (the Pyanodons suite alone carries far more than
+# 10,000 recipes) must page instead of being rejected outright, so the entry
+# bound is derived from the backend's own page limit.
+MAX_CATALOG_PAGES = 10000
+MAX_CATALOG_ENTRIES = MAX_CATALOG_PAGES * PAGE_SIZE
+MAX_ASSEMBLED_CAPABILITY_BYTES = 12 * 1048576
+PAGE_TIMEOUT_SECONDS = 12
 ASSEMBLY_TIMEOUT_SECONDS = 15
+MAX_MULTI_TICK_ASSEMBLY_SECONDS = 3600
 
 
 class CatalogAssemblyError(ValueError):
     """The catalog pages could not be proven to describe one complete snapshot."""
 
 
-def _validated_page(raw, expected_page):
+def _validated_page(raw, expected_page, *, allow_multi_tick=False):
     try:
         snapshot(raw)
     except (TypeError, ValueError, KeyError) as exc:
@@ -34,25 +41,28 @@ def _validated_page(raw, expected_page):
     )
     if (type(count) is not int or not 0 <= count <= MAX_CATALOG_ENTRIES
             or type(pages) is not int or not 0 <= pages <= MAX_CATALOG_PAGES
-            or type(page_size) is not int or page_size != PAGE_SIZE
+            or type(page_size) is not int or page_size not in (16, 32, 64, 128)
             or pages != (count + page_size - 1) // page_size
             or expected_page > max(pages, 1)):
         raise CatalogAssemblyError("Inconsistent recipe catalog page bounds")
-    if (caps.get("source_fingerprint") is None
+    if ((not allow_multi_tick and caps.get("source_fingerprint") is None)
             or len(caps["recipes"]) > page_size):
         raise CatalogAssemblyError("Catalog page lacks a bounded source fingerprint")
     return status, caps
 
 
-async def assemble_catalog(session, first_raw, *, monotonic=time.monotonic, stop_event=None):
-    """Return the first view frame with a complete catalog or raise explicitly.
+async def assemble_catalog(session, first_raw, *, monotonic=time.monotonic,
+                           stop_event=None, allow_multi_tick=False):
+    """Assemble pages; multi-tick results remain explicitly unverified/partial.
 
-    All catalog pages must describe one exact game tick and one source
-    fingerprint. The function does not weaken the same-tick contract when a
-    live game advances while pages are being read.
+    Strict callers retain same-tick/fingerprint behavior. Large-modpack UI
+    callers may browse an ordered, identity-stable multi-tick collection, but
+    must never present it as a complete same-tick planning snapshot.
     """
     started = monotonic()
-    first_status, first_caps = _validated_page(first_raw, 1)
+    first_status, first_caps = _validated_page(
+        first_raw, 1, allow_multi_tick=allow_multi_tick)
+    page_size = first_status["page_size"]
     total_pages = first_status["total_pages"]
     if total_pages > MAX_CATALOG_PAGES:
         raise CatalogAssemblyError("Recipe catalog requires too many pages")
@@ -63,8 +73,15 @@ async def assemble_catalog(session, first_raw, *, monotonic=time.monotonic, stop
         tuple(first_caps["enabled_content"]), first_caps["source_fingerprint"],
     )
     recipes = []
+    exclusions = []
     truncated = False
+    unverified = first_caps.get("source_fingerprint") is None
     previous_name = None
+    budget = (min(MAX_MULTI_TICK_ASSEMBLY_SECONDS,
+                  max(ASSEMBLY_TIMEOUT_SECONDS, total_pages * PAGE_TIMEOUT_SECONDS))
+              if allow_multi_tick else ASSEMBLY_TIMEOUT_SECONDS)
+    if first_status.get("snapshot") is True:
+        budget = max(budget, min(120, total_pages * 0.25 + 5))
     for page in range(1, total_pages + 1):
         if stop_event is not None and stop_event.is_set():
             raise CatalogAssemblyError("Recipe catalog assembly stopped")
@@ -72,13 +89,13 @@ async def assemble_catalog(session, first_raw, *, monotonic=time.monotonic, stop
             raw = first_raw
             status, caps = first_status, first_caps
         else:
-            if monotonic() - started > ASSEMBLY_TIMEOUT_SECONDS:
+            if monotonic() - started > budget:
                 raise CatalogAssemblyError("Recipe catalog assembly exceeded its time budget")
             try:
                 response = await asyncio.wait_for(
                     session.call_tool(
                         "autoengineer_view",
-                        arguments={"catalogPage": page, "catalogPageSize": PAGE_SIZE},
+                        arguments={"catalogPage": page, "catalogPageSize": page_size},
                     ),
                     timeout=PAGE_TIMEOUT_SECONDS,
                 )
@@ -90,42 +107,53 @@ async def assemble_catalog(session, first_raw, *, monotonic=time.monotonic, stop
                 raw = json.loads(next(item.text for item in response.content if item.type == "text"))
             except (StopIteration, TypeError, ValueError, json.JSONDecodeError) as exc:
                 raise CatalogAssemblyError("Recipe catalog page response was invalid") from exc
-            status, caps = _validated_page(raw, page)
+            status, caps = _validated_page(raw, page, allow_multi_tick=allow_multi_tick)
 
         current_identity = (
             caps["tick"], caps["game_version"], caps["force"],
             caps["surface"], tuple(caps["research"]),
             tuple(caps["enabled_content"]), caps["source_fingerprint"],
         )
-        if current_identity != identity:
+        if (current_identity[1:] if allow_multi_tick else current_identity) != (
+                identity[1:] if allow_multi_tick else identity):
             raise CatalogAssemblyError("Recipe catalog changed during page assembly")
+        if allow_multi_tick and current_identity[0] != identity[0]:
+            unverified = True
         if (status["total_count"] != first_status["total_count"]
                 or status["total_pages"] != total_pages
-                or status["page_size"] != PAGE_SIZE):
+                or status["page_size"] != page_size):
             raise CatalogAssemblyError("Recipe catalog page counts changed during assembly")
         page_recipes = caps["recipes"]
         if page_recipes != sorted(page_recipes, key=lambda item: item["name"]):
             raise CatalogAssemblyError("Recipe catalog page is not deterministically ordered")
         expected_page_count = min(
-            PAGE_SIZE, max(0, first_status["total_count"] - (page - 1) * PAGE_SIZE)
+            page_size, max(0, first_status["total_count"] - (page - 1) * page_size)
         )
-        if not caps["truncated"] and len(page_recipes) != expected_page_count:
+        page_exclusions = validate_exclusions(caps)
+        represented = accounted_recipe_count(caps)
+        if not caps["truncated"] and represented != expected_page_count:
             raise CatalogAssemblyError("Complete recipe page has an unexpected row count")
-        if page_recipes and previous_name is not None and page_recipes[0]["name"] <= previous_name:
+        page_names = sorted(row["name"] for row in page_recipes + page_exclusions)
+        if page_names and previous_name is not None and page_names[0] <= previous_name:
             raise CatalogAssemblyError("Recipe catalog pages overlap or are out of order")
-        if page_recipes:
-            previous_name = page_recipes[-1]["name"]
+        if page_names:
+            previous_name = page_names[-1]
         recipes.extend(page_recipes)
+        exclusions.extend(page_exclusions)
         truncated = truncated or caps["truncated"]
 
-    if monotonic() - started > ASSEMBLY_TIMEOUT_SECONDS:
+    if monotonic() - started > budget:
         raise CatalogAssemblyError("Recipe catalog assembly exceeded its time budget")
-    if len(recipes) > first_status["total_count"]:
+    represented = accounted_recipe_count({"recipes": recipes, "excluded": exclusions})
+    if represented > first_status["total_count"]:
         raise CatalogAssemblyError("Recipe catalog contains more rows than its declared total")
-    if not truncated and len(recipes) != first_status["total_count"]:
+    if not truncated and represented != first_status["total_count"]:
         raise CatalogAssemblyError("Recipe catalog is incomplete without a truncation marker")
 
-    assembled_caps = dict(first_caps, recipes=recipes, truncated=truncated)
+    # A multi-tick/null-fingerprint sweep is browsable, not a verified
+    # same-tick catalog for production planning.
+    assembled_caps = dict(first_caps, recipes=recipes, excluded=exclusions,
+                          truncated=truncated or unverified)
     encoded = json.dumps(assembled_caps, separators=(",", ":"), allow_nan=False).encode("utf-8")
     if len(encoded) > MAX_ASSEMBLED_CAPABILITY_BYTES:
         raise CatalogAssemblyError("Assembled recipe catalog exceeds payload budget")

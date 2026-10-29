@@ -5,8 +5,19 @@ import urllib.request
 from autoengineer_config import get_settings, mcp_parameters
 from mcp import ClientSession
 from mcp.client.stdio import stdio_client
+from runtime_settings import model_endpoint, model_name, request_timeout
+from ups_inference import guarded_urlopen
 
-API = get_settings()["llm_api_url"]
+
+def api_base():
+    """Return the model endpoint at the moment of the call.
+
+    The endpoint used to be a module-level constant, which froze it when
+    the module was first imported: a Settings change could never reach
+    it. It is a function now, so the next request uses the configured
+    endpoint.
+    """
+    return model_endpoint()
 
 READ_TOOLS = (
     "get_player_position",
@@ -91,10 +102,10 @@ def compact_observation(observation):
 
 def ask_qwen(observation):
     request = urllib.request.Request(
-        API + "/chat/completions",
+        api_base() + "/chat/completions",
         data=json.dumps(
             {
-                "model": get_settings()["llm_model"],
+                "model": model_name() or get_settings()["llm_model"],
                 "temperature": 0.1,
                 "max_tokens": 350,
                 "messages": [
@@ -124,7 +135,7 @@ def ask_qwen(observation):
         method="POST",
     )
 
-    with urllib.request.urlopen(request, timeout=180) as response:
+    with guarded_urlopen(request, timeout=request_timeout()) as response:
         return json.load(response)["choices"][0]["message"]["content"]
 
 

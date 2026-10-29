@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 
 import dashboard_map_layers
 import dashboard_nature_layers as nature
+from dashboard_view import LiveView, map_scale
 
 
 class PrototypeMapColorTests(unittest.TestCase):
@@ -491,6 +492,325 @@ class ViewWiringTests(unittest.TestCase):
         source = self.view_source()
         self.assertIn("def _nature_shape_cache", source)
         self.assertIn("nature_fingerprint", source)
+
+
+class _RecordingCanvas:
+    """A canvas that records every drawing call instead of drawing it."""
+
+    def __init__(self, width=980, height=660):
+        self.calls = []
+        self._width = width
+        self._height = height
+
+    def winfo_width(self):
+        return self._width
+
+    def winfo_height(self):
+        return self._height
+
+    def _record(self, kind, args, kwargs):
+        self.calls.append((kind, args, kwargs))
+
+    def create_rectangle(self, *args, **kwargs):
+        self._record("rectangle", args, kwargs)
+
+    def create_oval(self, *args, **kwargs):
+        self._record("oval", args, kwargs)
+
+    def create_text(self, *args, **kwargs):
+        self._record("text", args, kwargs)
+
+    def create_line(self, *args, **kwargs):
+        self._record("line", args, kwargs)
+
+    def create_polygon(self, *args, **kwargs):
+        self._record("polygon", args, kwargs)
+
+    def create_image(self, *args, **kwargs):
+        self._record("image", args, kwargs)
+
+    def delete(self, *args, **kwargs):
+        self._record("delete", args, kwargs)
+
+    def of(self, kind):
+        return [call for call in self.calls if call[0] == kind]
+
+
+class _Var:
+    """Just enough of a tk variable for the view under test."""
+
+    def __init__(self, value):
+        self.value = value
+
+    def get(self):
+        return self.value
+
+    def set(self, value):
+        self.value = value
+
+
+class _StubView:
+    """Just enough of LiveView to drive ``draw_nature`` without a Tk root."""
+
+    def __init__(self, canvas, width=980, height=660):
+        self.canvas = canvas
+        self.layers = {"nature": _Var(True)}
+        self.offset = {"x": 0, "y": 0}
+        self.zoom = _Var("128")
+        self._width = width
+        self._height = height
+
+    def winfo_width(self):
+        return self._width
+
+    def winfo_height(self):
+        return self._height
+
+    draw_nature = LiveView.draw_nature
+    _nature_shape_cache = LiveView._nature_shape_cache
+    _draw_tree = LiveView._draw_tree
+    _draw_rock = LiveView._draw_rock
+    _draw_cliff = LiveView._draw_cliff
+
+
+def _tree(x, y, name="tree-08", **extra):
+    """One observed tree entity, as the observer reports it."""
+    entity = dict(x=x, y=y, name=name, kind="nature", prototype_type="tree")
+    entity.update(extra)
+    return entity
+
+
+class ForestCanopyGlyphTests(unittest.TestCase):
+    """A dense observed stand of trees reads as forest cover, not dots.
+
+    The canopy glyph is a *display* quantity: it changes how large the glyph
+    for an observed tree is drawn, never how many glyphs are drawn. These
+    tests drive the real drawing path with a recording canvas, so no display
+    and no Factorio process is needed.
+    """
+
+    WIDTH = 980
+    HEIGHT = 660
+
+    def render(self, entities, zoom="128"):
+        """Draw the observed entities and return the recording canvas."""
+        canvas = _RecordingCanvas(self.WIDTH, self.HEIGHT)
+        view = _StubView(canvas, self.WIDTH, self.HEIGHT)
+        view.zoom = _Var(zoom)
+        view.draw_nature(
+            {"entities": entities, "origin": {"x": -256, "y": -256},
+             "width": 512, "height": 512},
+            {"x": 0, "y": 0},
+            self.WIDTH,
+            self.HEIGHT,
+            float(zoom),
+        )
+        return canvas
+
+    def tree_glyphs(self, canvas):
+        """Every tree canopy oval the view painted."""
+        return [
+            call
+            for call in canvas.of("oval")
+            if call[2].get("tags") == "nature-tree"
+        ]
+
+    def test_chunked_nature_does_not_rescan_full_entity_list_per_chunk(self):
+        from unittest.mock import patch
+
+        import dashboard_view
+        trees = [_tree(cx * 64 + 2, 3) for cx in range(8)]
+        canvas = _RecordingCanvas(self.WIDTH, self.HEIGHT)
+        view = _StubView(canvas, self.WIDTH, self.HEIGHT)
+        real_shapes = dashboard_view.nature_shapes
+        sizes = []
+
+        def observed_shapes(entities, window):
+            sizes.append(len(entities))
+            return real_shapes(entities, window)
+
+        with patch.object(dashboard_view, "nature_shapes", side_effect=observed_shapes):
+            view.draw_nature({"entities": trees,
+                              "observed_chunks": [{"x": cx, "y": 0} for cx in range(8)]},
+                             {"x": 200, "y": 0}, self.WIDTH, self.HEIGHT, 200)
+        self.assertEqual(sizes, [1] * 8)
+
+    def test_the_glyph_count_equals_the_observed_tree_count(self):
+        # The core truthfulness invariant: a canopy glyph is drawn once per
+        # observed tree. No tree is added, removed, merged away or moved.
+        for count in (1, 2, 7, 40):
+            entities = [_tree(float(i % 8), float(i // 8)) for i in range(count)]
+            canvas = self.render(entities)
+            self.assertEqual(
+                len(self.tree_glyphs(canvas)),
+                count,
+                f"{count} observed trees must draw {count} glyphs",
+            )
+
+    def test_a_dense_stand_draws_one_glyph_per_observed_tree(self):
+        # 64 observed trees on a solid 8x8 block. The glyph count must stay
+        # 64 even though the glyphs now overlap into continuous canopy.
+        entities = [_tree(float(x), float(y)) for x in range(8) for y in range(8)]
+        canvas = self.render(entities)
+        self.assertEqual(len(self.tree_glyphs(canvas)), 64)
+
+    def test_two_neighbouring_trees_draw_overlapping_canopies(self):
+        # Two observed trees on neighbouring tiles are one tile apart. Their
+        # canopy glyphs must overlap so the stand reads as one patch of
+        # foliage instead of two separate dots.
+        canvas = self.render([_tree(0.0, 0.0), _tree(1.0, 0.0)])
+        glyphs = self.tree_glyphs(canvas)
+        self.assertEqual(len(glyphs), 2)
+        first = glyphs[0][1]
+        second = glyphs[1][1]
+        self.assertGreater(
+            first[2] - second[0],
+            0.0,
+            "the two canopy glyphs must overlap horizontally",
+        )
+
+    def test_a_neighbouring_diagonal_pair_also_overlaps(self):
+        canvas = self.render([_tree(0.0, 0.0), _tree(1.0, 1.0)])
+        glyphs = self.tree_glyphs(canvas)
+        first = glyphs[0][1]
+        second = glyphs[1][1]
+        self.assertGreater(first[2] - second[0], 0.0)
+        self.assertGreater(first[3] - second[1], 0.0)
+
+    def test_an_isolated_tree_stays_a_single_tree(self):
+        # One observed tree on its own must read as one tree, not a blob
+        # that covers many tiles.
+        canvas = self.render([_tree(0.0, 0.0)])
+        glyphs = self.tree_glyphs(canvas)
+        self.assertEqual(len(glyphs), 1)
+        bounds = glyphs[0][1]
+        scale = map_scale(self.WIDTH, self.HEIGHT, 128.0)
+        self.assertLess(
+            (bounds[2] - bounds[0]) / scale,
+            2.0,
+            "an isolated tree must not be drawn wider than two tiles",
+        )
+
+    def test_the_canopy_radius_scales_with_the_zoom(self):
+        # The floor is expressed in tiles, so the glyph grows and shrinks
+        # with the map zoom instead of being a fixed pixel count.
+        wide = self.tree_glyphs(self.render([_tree(0.0, 0.0)], zoom="128"))[0]
+        close = self.tree_glyphs(self.render([_tree(0.0, 0.0)], zoom="32"))[0]
+        far = self.tree_glyphs(self.render([_tree(0.0, 0.0)], zoom="200"))[0]
+        wide_width = wide[1][2] - wide[1][0]
+        close_width = close[1][2] - close[1][0]
+        far_width = far[1][2] - far[1][0]
+        self.assertGreater(close_width, wide_width)
+        self.assertGreater(wide_width, far_width)
+
+    def test_the_canopy_stays_small_when_zoomed_all_the_way_out(self):
+        # Zooming out must not make each tree balloon: the glyph is capped
+        # by the tile-derived floor, not by a pixel count.
+        glyph = self.tree_glyphs(self.render([_tree(0.0, 0.0)], zoom="200"))[0]
+        scale = map_scale(self.WIDTH, self.HEIGHT, 200.0)
+        self.assertLessEqual((glyph[1][2] - glyph[1][0]) / scale, 2.0)
+
+    def test_the_glyph_is_painted_at_the_observed_position(self):
+        # The canopy change must not move a tree: the glyph centre is the
+        # projection of the observed world position.
+        canvas = self.render([_tree(10.0, -4.0)])
+        glyph = self.tree_glyphs(canvas)[0]
+        left, top, right, bottom = glyph[1][:4]
+        centre_x = (left + right) / 2
+        centre_y = (top + bottom) / 2
+        scale = map_scale(self.WIDTH, self.HEIGHT, 128.0)
+        self.assertAlmostEqual(centre_x, self.WIDTH / 2 + 10.0 * scale, places=6)
+        self.assertAlmostEqual(centre_y, self.HEIGHT / 2 - 4.0 * scale, places=6)
+
+    def test_the_canopy_uses_the_verified_chart_green(self):
+        # The verified live Factorio map green for a charted vanilla tree.
+        canvas = self.render([_tree(0.0, 0.0)])
+        glyph = self.tree_glyphs(canvas)[0]
+        self.assertEqual(glyph[2].get("fill"), "#31401b")
+
+    def test_a_modded_tree_keeps_its_own_observed_colour(self):
+        # A modded tree is not a vanilla "tree-" prototype, so it keeps the
+        # colour the observer reported.
+        entity = _tree(0.0, 0.0, name="alien-tree",
+                       map_color={"r": 0.5, "g": 0.0, "b": 0.5})
+        canvas = self.render([entity])
+        glyph = self.tree_glyphs(canvas)[0]
+        self.assertEqual(glyph[2].get("fill"), "#800080")
+
+    def test_rock_and_cliff_glyphs_are_unchanged(self):
+        # The canopy change must not touch the rock or the cliff geometry.
+        # Both are drawn with their own marker size and their own one-pixel
+        # radius floor, exactly as before.
+        rock = dict(x=0.0, y=0.0, name="big-rock", kind="nature",
+                    prototype_type="simple-entity")
+        cliff = dict(x=2.0, y=0.0, name="cliff", kind="nature",
+                     prototype_type="cliff")
+        canvas = self.render([rock, cliff])
+        rocks = [c for c in canvas.of("rectangle")
+                 if c[2].get("tags") == "nature-rock"]
+        cliffs = [c for c in canvas.of("rectangle")
+                  if c[2].get("tags") == "nature-cliff"]
+        self.assertEqual(len(rocks), 1)
+        self.assertEqual(len(cliffs), 1)
+        scale = map_scale(self.WIDTH, self.HEIGHT, 128.0)
+        rock_radius = max(1.0, nature.ROCK_MARKER_TILES * scale / 2)
+        self.assertAlmostEqual(
+            (rocks[0][1][2] - rocks[0][1][0]) / 2, rock_radius, places=6)
+        cliff_radius = max(1.0, nature.CLIFF_MARKER_TILES * scale / 2)
+        self.assertAlmostEqual(
+            (cliffs[0][1][2] - cliffs[0][1][0]) / 2, cliff_radius, places=6)
+
+    def test_no_glyph_is_drawn_for_an_uncoloured_tree(self):
+        # A tree with no authoritative colour stays unpainted rather than
+        # becoming an invented outline.
+        entity = _tree(0.0, 0.0, name="dead-tree-desert",
+                       graphics_variation=3)
+        canvas = self.render([entity])
+        self.assertEqual(self.tree_glyphs(canvas), [])
+
+
+class TreeCanopyTileScaleTests(unittest.TestCase):
+    """The canopy floor is a tile quantity, not a pixel quantity."""
+
+    def shape_of(self, entity):
+        shape = nature.nature_shape(entity)
+        if shape is None:
+            self.fail(f"expected a natural shape for {entity!r}")
+        return shape
+
+    def test_the_canopy_radius_is_expressed_in_tiles(self):
+        shape = self.shape_of({"x": 0, "y": 0, "name": "tree-01",
+                               "prototype_type": "tree"})
+        self.assertAlmostEqual(nature.tree_canopy_tiles(shape),
+                               nature.TREE_CANOPY_TILES)
+
+    def test_the_canopy_is_wider_than_half_a_tile(self):
+        # Half a tile of radius is exactly what makes two neighbouring
+        # trees meet, so the floor must be at least that.
+        self.assertGreaterEqual(nature.TREE_CANOPY_TILES, 0.5)
+
+    def test_an_isolated_tree_does_not_grow_into_a_blob(self):
+        # The floor stays well below one tile of radius so that a lone tree
+        # still reads as one tree.
+        self.assertLess(nature.TREE_CANOPY_TILES, 1.0)
+
+    def test_an_observed_footprint_can_grow_the_canopy(self):
+        # A tree with a larger observed footprint keeps the wider glyph the
+        # game would draw for it.
+        shape = self.shape_of({"x": 0, "y": 0, "name": "tree-01",
+                               "prototype_type": "tree",
+                               "width": 2.0, "height": 2.0})
+        self.assertGreater(
+            nature.tree_canopy_tiles(shape),
+            nature.TREE_CANOPY_TILES,
+        )
+
+    def test_the_canopy_is_not_a_screen_pixel_quantity(self):
+        # The old floor was a fixed pixel count, which could not satisfy
+        # both ends of the zoom range.
+        self.assertNotIn("TREE_MIN_MARKER_PIXELS", dir(nature))
+        self.assertGreater(nature.TREE_CANOPY_TILES, 0.0)
+        self.assertLess(nature.TREE_CANOPY_TILES, 5.0)
 
 
 if __name__ == "__main__":

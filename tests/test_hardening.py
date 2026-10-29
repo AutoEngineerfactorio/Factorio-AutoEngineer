@@ -26,6 +26,89 @@ class BoundaryTests(unittest.IsolatedAsyncioTestCase):
     def _setupAsyncioRunner(self):
         self._asyncioRunner = asyncio.Runner(loop_factory=OfflineLoop)
 
+    async def test_the_frequent_view_read_uses_the_fast_path(self):
+        """A plain view read must not ask for the recipe catalog.
+
+        The catalog adapter enumerates every recipe, recomputes the
+        technology fingerprint and enumerates every machine prototype. At
+        the observed live Pyanodons scale that is 10,146 recipes to emit
+        one page of 32, measured offline at 165.5 ms of Lua per call
+        against 19.2 ms for the fast path. The dispatch boundary is the
+        one place every view read passes through, so the fast path is
+        applied here.
+        """
+        raw = NS(call_tool=AsyncMock(return_value=response({})))
+        boundary = DispatchBoundary(raw)
+        await boundary.call_tool("autoengineer_view", {})
+        arguments = raw.call_tool.call_args.kwargs["arguments"]
+        self.assertTrue(arguments["noCatalog"])
+        self.assertNotIn("catalogOnly", arguments)
+
+    async def test_a_catalog_read_keeps_the_catalog(self):
+        """A caller that asks for the catalog still gets the catalog."""
+        raw = NS(call_tool=AsyncMock(return_value=response({})))
+        boundary = DispatchBoundary(raw)
+        await boundary.call_tool("autoengineer_view", {"catalogOnly": True})
+        arguments = raw.call_tool.call_args.kwargs["arguments"]
+        self.assertTrue(arguments["catalogOnly"])
+        self.assertNotIn("noCatalog", arguments)
+
+    async def test_a_map_chunk_read_uses_the_fast_path(self):
+        """A map chunk read never needs the recipe catalog."""
+        raw = NS(call_tool=AsyncMock(return_value=response({})))
+        boundary = DispatchBoundary(raw)
+        await boundary.call_tool("autoengineer_view",
+                                 {"mapChunkX": 1, "mapChunkY": 2})
+        arguments = raw.call_tool.call_args.kwargs["arguments"]
+        self.assertTrue(arguments["noCatalog"])
+        self.assertEqual(arguments["mapChunkX"], 1)
+
+    async def test_a_named_catalog_page_keeps_the_catalog(self):
+        """A request that names a catalog page wants the catalog.
+
+        Only a request that names no catalog argument at all is switched
+        to the fast path, so a caller that pages through the catalog is
+        never silently given an empty catalog.
+        """
+        raw = NS(call_tool=AsyncMock(return_value=response({})))
+        boundary = DispatchBoundary(raw)
+        await boundary.call_tool("autoengineer_view",
+                                 {"catalogPage": 2, "catalogPageSize": 32})
+        arguments = raw.call_tool.call_args.kwargs["arguments"]
+        self.assertEqual(arguments["catalogPage"], 2)
+        self.assertNotIn("noCatalog", arguments)
+
+    async def test_a_catalog_read_cannot_suppress_the_catalog(self):
+        """A catalog read that also suppresses the catalog is refused."""
+        raw = NS(call_tool=AsyncMock(return_value=response({})))
+        boundary = DispatchBoundary(raw)
+        with self.assertRaises(ValueError):
+            await boundary.call_tool("autoengineer_view",
+                                     {"catalogOnly": True, "noCatalog": True})
+        raw.call_tool.assert_not_called()
+
+    async def test_a_non_boolean_catalog_flag_is_refused(self):
+        """The catalog flags must be real booleans."""
+        raw = NS(call_tool=AsyncMock(return_value=response({})))
+        boundary = DispatchBoundary(raw)
+        for arguments in ({"catalogOnly": "yes"}, {"noCatalog": 1},
+                           {"catalogOnly": None}):
+            with self.subTest(arguments=arguments):
+                with self.assertRaises(ValueError):
+                    await boundary.call_tool("autoengineer_view", arguments)
+        raw.call_tool.assert_not_called()
+
+    async def test_the_fast_path_adds_no_gameplay_capability(self):
+        """The fast path is a read. It adds no write argument."""
+        self.assertEqual(
+            ALLOWED["autoengineer_view"],
+            {"catalogPage", "catalogPageSize", "mapChunkX", "mapChunkY",
+             "catalogOnly", "noCatalog"},
+        )
+        for forbidden in ("safetyOwner", "targetX", "targetY", "kind",
+                          "name", "count", "owner"):
+            self.assertNotIn(forbidden, ALLOWED["autoengineer_view"])
+
     async def test_unlisted_tools_and_extra_arguments_never_reach_transport(self):
         raw = NS(call_tool=AsyncMock())
         boundary = DispatchBoundary(raw, policy=ModePolicy(SEMI))

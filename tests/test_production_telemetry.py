@@ -41,8 +41,8 @@ def telemetry(tick=123):
             "reason": "Only one bounded prototype bucket is sampled",
             "items": group(128, [{
                 "name": "iron-plate",
-                "input": [10.0] * 60,
-                "output": [2.0] * 60,
+                "input": [2.0] * 60,
+                "output": [10.0] * 60,
             }], prototype_count=130),
             "fluids": group(64, []),
         },
@@ -73,8 +73,55 @@ class ProductionTelemetryTests(unittest.TestCase):
         self.assertEqual(model["items"][0]["name"], "iron-plate")
         self.assertEqual(model["networks"][0]["consumption_satisfaction"], 0.9)
         self.assertFalse(model["power_partial"])
-        self.assertTrue(any("iron-plate" in row["title"] for row in model["recommendations"]))
+        supply = next(row for row in model["recommendations"] if "iron-plate" in row["title"])
+        self.assertIn("consumption averaged 10.00/min versus production 2.00/min", supply["detail"])
         self.assertTrue(any("network 1" in row["title"] for row in model["recommendations"]))
+
+    def test_instantaneous_power_sample_can_have_a_capped_network_list(self):
+        sample = telemetry()
+        sample["power"]["partial"] = True
+        observed = validate_telemetry(sample, 123)
+        self.assertEqual(observed["power"]["status"], "ok")
+        self.assertTrue(telemetry_view_model(observed)["power_partial"])
+
+    def test_display_production_uses_factorio_input_as_produced(self):
+        from unittest.mock import Mock
+
+        from telemetry_view import TelemetryView
+        view = Mock()
+        view.production_target.get.return_value = "item:iron-plate"
+        view.production_rate_unit.get.return_value = "/min"
+        view.production_rows = {
+            "item:iron-plate": {"input": [12.0, 20.0], "output": [3.0, 6.0]}
+        }
+        TelemetryView.draw_production(view)
+        series = view._draw_lines.call_args.args[1]
+        self.assertEqual(series[0][1], [12.0, 20.0])
+        self.assertEqual(series[1][1], [3.0, 6.0])
+        self.assertIn("Produced 20.00", view.production_legend.set.call_args.args[0])
+        self.assertIn("Consumed 6.00", view.production_legend.set.call_args.args[0])
+
+    def test_bounded_sampled_flows_create_a_chart_without_more_game_calls(self):
+        from unittest.mock import Mock
+
+        from telemetry_view import TelemetryView
+        view = Mock()
+        view.sampled_flow_history = {}
+        view.model = {"items": [], "fluids": []}
+        view.production_target.get.return_value = ""
+        record = TelemetryView._record_sampled_flows
+        record(view, [{"name": "iron-plate", "input": 120, "output": 30}], 100)
+        record(view, [{"name": "iron-plate", "input": 121, "output": 31}], 100)
+        self.assertEqual(len(view.sampled_flow_history["iron-plate"]), 1)
+        record(view, [{"name": "iron-plate", "input": 60, "output": 10}], 101)
+        TelemetryView._update_production_targets(view)
+        row = view.production_rows["item:iron-plate"]
+        self.assertEqual(row["input"], [120, 60])
+        self.assertEqual(row["output"], [30, 10])
+        self.assertEqual(row["source"], "sampled")
+        # If the game tick moves backwards, old rates cannot be used.
+        record(view, [{"name": "iron-plate", "input": 1, "output": 0}], 1)
+        self.assertEqual(len(view.sampled_flow_history["iron-plate"]), 1)
 
     def test_older_backend_is_explicitly_unavailable_and_dashboard_safe(self):
         normalized = validate_telemetry(None, 123)

@@ -3,6 +3,7 @@
 import configparser
 import hashlib
 import json
+import math
 import os
 import secrets
 import socket
@@ -16,6 +17,7 @@ from pathlib import Path
 
 import psutil
 from app_runtime import component_command
+from performance_governor import owned_process_creationflags
 
 PATHS = (
     "llama_exe",
@@ -184,11 +186,40 @@ class Rcon:
         raise ConnectionError("RCON response missing")
 
     def health(self):
-        return json.loads(
-            self.command(
-                "/silent-command local p=game.connected_players[1];rcon.print(helpers.table_to_json({players=#game.connected_players,character=p and p.character~=nil,tick=game.tick,stopped=not storage.autoengineer_safety or storage.autoengineer_safety.stopped,walking=p and p.character and p.character.walking_state.walking,x=p and p.character and p.character.position.x,y=p and p.character and p.character.position.y,game_speed=game.speed,speed_modifier=p and p.character_running_speed_modifier}))"
-            )
-        )
+        """Check the game through the registered, read-only mod command.
+
+        No arbitrary Lua is sent to the console. Fail closed when the mod
+        is missing, its response is malformed, or the player is unsafe.
+        """
+        try:
+            document = json.loads(self.command("/autoengineer-observe status"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Registered status observation was not JSON") from exc
+        if not isinstance(document, dict) or type(document.get("protocol")) is not int or document["protocol"] != 1:
+            raise ValueError("Unsupported registered observation protocol")
+        if document.get("status") == "unavailable" and document.get("reason") == "no_connected_player_with_character":
+            # Dedicated server can be ready before the graphical client joins.
+            # Never treat this as a stationary character eligible for save.
+            return {"players": 0, "character": False, "stopped": False, "walking": True}
+        control = document.get("control")
+        if document.get("status") != "ok" or not isinstance(control, dict):
+            raise ValueError("Registered status observation unavailable")
+        players = document.get("connected_players")
+        tick = document.get("tick")
+        if type(players) is not int or players != 1 or type(tick) is not int or tick < 0:
+            raise ValueError("Unexpected status players or tick")
+        for field in ("lease_active", "walking", "character_control"):
+            if type(control.get(field)) is not bool:
+                raise ValueError("Invalid registered control status")
+        for axis in ("x", "y"):
+            value = document.get(axis)
+            if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value):
+                raise ValueError("Invalid registered player position")
+        return {
+            "players": players, "character": control["character_control"],
+            "tick": tick, "stopped": not control["lease_active"],
+            "walking": control["walking"], "x": document["x"], "y": document["y"],
+        }
 
     def close(self):
         self.sock.close()
@@ -249,6 +280,21 @@ class Supervisor:
                 pass
         return found
 
+    def factorio_instances(self):
+        """Detect all live Factorio binaries, including other install paths.
+
+        A graphical host must not silently coexist with an unrelated
+        headless or graphical instance on this PC. This is read-only.
+        """
+        found = []
+        for process in psutil.process_iter(["pid", "name"]):
+            try:
+                if (process.info.get("name") or "").lower() == "factorio.exe":
+                    found.append(process.info["pid"])
+            except (psutil.Error, OSError):
+                continue
+        return found
+
     def matching(self, exe, flag, value):
         return [
             p
@@ -272,7 +318,12 @@ class Supervisor:
                 stderr=log,
                 env=env,
                 cwd=cwd,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+                creationflags=owned_process_creationflags(
+                    name,
+                    windows=os.name == "nt",
+                    no_window=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    below_normal=getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0),
+                ),
             )
         finally:
             log.close()
@@ -413,6 +464,11 @@ class Supervisor:
                 return
             if self.p["game_mode"] == "graphical-host":
                 hosts = self.matching(self.p["client_exe"], "--host", self.p["save_path"])
+                instances = self.factorio_instances()
+                if len(instances) > 1 or (instances and not hosts):
+                    raise RuntimeError(
+                        "Another Factorio instance is active; refusing a second graphical host"
+                    )
                 if hosts:
                     args = hosts[0].info["cmdline"] or []
                     if (

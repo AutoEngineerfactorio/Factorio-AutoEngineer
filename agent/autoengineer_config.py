@@ -20,7 +20,23 @@ DEFAULTS = {
 
 
 def get_settings():
-    """Read optional local JSON, resolving paths relative to this project."""
+    """Read optional local JSON, resolving paths relative to this project.
+
+    The local JSON file is the base. The **Settings screen** is overlaid
+    on top of it, so a change made in the interface reaches every service
+    that reads its configuration through this function.
+
+    The order matters and it is a security property: the base
+    configuration is validated **first**, and only a valid base is
+    overlaid. An invalid base configuration is therefore always refused,
+    even when the Settings would have replaced the offending value. The
+    overlaid result is validated again, so an overlay can never smuggle an
+    unusable value past the checks.
+
+    A stored setting that is missing, broken or unsafe is **ignored** and
+    the base configuration is kept. The service therefore keeps working
+    with a known-good configuration instead of failing.
+    """
     config_path = Path(os.environ.get("AUTOENGINEER_CONFIG", "config.local.json"))
     if not config_path.is_absolute():
         config_path = PROJECT_ROOT / config_path
@@ -35,6 +51,20 @@ def get_settings():
             "Configuration must contain only supported example keys; credentials belong in the environment"
         )
     settings = DEFAULTS | overrides
+    _validate_settings(settings)
+    settings = _overlay_stored_settings(settings)
+    _validate_settings(settings)
+    settings["llm_api_url"] = settings["llm_api_url"].rstrip("/")
+    return settings
+
+
+def _validate_settings(settings):
+    """Refuse a configuration that is not usable.
+
+    The model endpoint must be an HTTP(S) base URL without credentials, a
+    query or a fragment, and both the RCON host and the model host must
+    be loopback. A credential in the URL is never echoed in the error.
+    """
     for key in DEFAULTS.keys() - {"rcon_port"}:
         if not isinstance(settings[key], str) or not settings[key].strip():
             raise ValueError(f"Configuration requires a nonempty {key}")
@@ -59,8 +89,33 @@ def get_settings():
                     raise ValueError()
             except ValueError:
                 raise ValueError("Only loopback RCON and model endpoints are supported") from None
-    settings["llm_api_url"] = settings["llm_api_url"].rstrip("/")
-    return settings
+
+
+def _overlay_stored_settings(settings):
+    """Overlay the Settings screen values onto the base configuration.
+
+    Only the model endpoint and the model name are overlaid, because those
+    are the values the Settings own and the services read. The endpoint is
+    validated first: a value that is not a loopback address is ignored
+    rather than applied, so a wrong setting can never point the
+    application's prompts at another machine.
+    """
+    try:
+        from runtime_settings import model_runtime
+    except Exception:
+        return settings
+    try:
+        runtime = model_runtime()
+    except Exception:
+        return settings
+    if runtime.problem is not None:
+        # The stored endpoint is unusable; the base configuration stays.
+        return settings
+    overlaid = dict(settings)
+    overlaid["llm_api_url"] = runtime.endpoint
+    if runtime.model:
+        overlaid["llm_model"] = runtime.model
+    return overlaid
 
 
 def mcp_parameters():

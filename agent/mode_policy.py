@@ -11,6 +11,8 @@ READ_TOOLS = frozenset(
     {
         "autoengineer_operation_preview",
         "autoengineer_view",
+        "autoengineer_telemetry",
+        "autoengineer_inventory",
         "autoengineer_policy",
         "get_player_position",
         "scan_resources",

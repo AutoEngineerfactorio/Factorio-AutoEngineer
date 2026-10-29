@@ -24,7 +24,7 @@ def recipe(name):
     }
 
 
-def page(number, names, *, tick=120, fingerprint=FINGERPRINT, truncated=False,
+def page(number, names, *, tick=120, fingerprint: str | None = FINGERPRINT, truncated=False,
          total_count=17, total_pages=2):
     return {
         "status": "ok", "x": 0, "y": 0, "tick": tick, "surface": "nauvis",
@@ -162,3 +162,61 @@ class CatalogAssemblyTests(unittest.IsolatedAsyncioTestCase):
                 await assemble_catalog(
                     FakeSession([second]), first, monotonic=lambda: next(times)
                 )
+
+    async def test_multitick_missing_fingerprint_is_browsable_but_not_planner_ready(self):
+        names = [f"modded-{n:02d}" for n in range(34)]
+        first = page(1, names[:32], tick=100, fingerprint=None,
+                     truncated=True, total_count=34, total_pages=2)
+        second = page(2, names[32:], tick=220, fingerprint=None,
+                      truncated=True, total_count=34, total_pages=2)
+        for raw in (first, second):
+            raw["catalog_status"]["page_size"] = 32
+        session = FakeSession([second])
+        result = await assemble_catalog(session, first, allow_multi_tick=True)
+        recipes = result["capabilities"]["recipes"]
+        if not isinstance(recipes, list):
+            self.fail("assembled recipes must be a list")
+        self.assertEqual(len(recipes), 34)
+        self.assertTrue(result["capabilities"]["truncated"])
+        self.assertIsNone(result["capabilities"]["source_fingerprint"])
+        self.assertEqual(result["catalog_status"]["status"], "assembled")
+        self.assertEqual(session.calls[0][1]["catalogPageSize"], 32)
+
+    def test_large_modpack_bound_remains_consistent_with_planner(self):
+        from catalog_assembly import MAX_CATALOG_ENTRIES, MAX_CATALOG_PAGES
+        from read_only_planning import MAX_RECIPE_CATALOG_ROWS
+        self.assertEqual(MAX_CATALOG_ENTRIES, MAX_CATALOG_PAGES * 16)
+        self.assertEqual(MAX_CATALOG_ENTRIES, MAX_RECIPE_CATALOG_ROWS)
+
+    async def test_multitick_rejects_changed_force(self):
+        first = page(1, [f"a-{n:02d}" for n in range(16)],
+                     fingerprint=None, truncated=True)
+        second = page(2, ["z-last"], tick=200,
+                      fingerprint=None, truncated=True)
+        second["capabilities"]["force"] = "enemy"
+        with self.assertRaises(CatalogAssemblyError):
+            await assemble_catalog(FakeSession([second]), first,
+                                   allow_multi_tick=True)
+
+    async def test_immutable_catalog_preserves_all_explicit_exclusions(self):
+        names=[f"recipe-{number:02d}" for number in range(17)]
+        first=page(1,names[1:16])
+        first["catalog_status"].update(snapshot=True,snapshot_tick=120,observation_tick=120)
+        first["capabilities"]["excluded"]=[{"name":names[0],"reason":"unsupported_shape"}]
+        second=page(2,names[16:])
+        second["capabilities"]["excluded"]={}
+        result=await assemble_catalog(FakeSession([second]),first)
+        self.assertEqual(len(result["capabilities"]["recipes"]),16)
+        self.assertEqual(result["capabilities"]["excluded"][0]["name"],names[0])
+        self.assertFalse(result["capabilities"]["truncated"])
+        snapshot(result)
+
+    async def test_large_immutable_batches_keep_strict_assembly(self):
+        names=[f"recipe-{number:03d}" for number in range(129)]
+        first=page(1,names[:128],total_count=129,total_pages=2)
+        second=page(2,names[128:],total_count=129,total_pages=2)
+        for raw in (first,second):
+            raw["catalog_status"].update(page_size=128,snapshot=True,snapshot_tick=120,observation_tick=120)
+        result=await assemble_catalog(FakeSession([second]),first)
+        self.assertEqual(len(result["capabilities"]["recipes"]),129)
+        self.assertFalse(result["capabilities"]["truncated"])

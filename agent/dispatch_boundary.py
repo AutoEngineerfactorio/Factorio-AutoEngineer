@@ -12,7 +12,11 @@ from verified_operations import validate_operation
 ALLOWED = {
     "autoengineer_operation_preview": {"kind", "name", "count"},
     "autoengineer_operation": {"kind", "name", "count", "safetyOwner", "targetX", "targetY"},
-    "autoengineer_view": {"catalogPage", "catalogPageSize", "mapChunkX", "mapChunkY"},
+    "autoengineer_view": {"catalogPage", "catalogPageSize", "mapChunkX", "mapChunkY",
+                           "catalogOnly", "noCatalog"},
+    "autoengineer_telemetry": set(),
+    "autoengineer_inventory": {"machinePage", "machinePageSize",
+                               "logisticsPage", "logisticsPageSize"},
     "autoengineer_policy": set(),
     "get_player_position": set(),
     "scan_resources": {"radius"},
@@ -98,6 +102,46 @@ class DispatchBoundary:
                 raise ValueError("Map chunk coordinates must be given together")
             if chunk_x is not None:
                 validate_chunk_request((chunk_x, chunk_y))
+            catalog_only = args.get("catalogOnly", False)
+            if type(catalog_only) is not bool:
+                raise ValueError("Invalid catalog-only flag")
+            no_catalog = args.get("noCatalog", False)
+            if type(no_catalog) is not bool:
+                raise ValueError("Invalid no-catalog flag")
+            if catalog_only and no_catalog:
+                # A catalog read that also suppressed the catalog would
+                # report an empty catalog, which is indistinguishable from
+                # a catalog that genuinely has no recipes.
+                raise ValueError("A catalog read cannot also suppress the catalog")
+            if not catalog_only and not no_catalog:
+                # The frequent view read does not need the recipe catalog.
+                # The catalog adapter enumerates every recipe, recomputes
+                # the technology fingerprint and enumerates every machine
+                # prototype; at the observed live Pyanodons scale that is
+                # 10,146 recipes to emit one page of 32, measured offline
+                # at 165.5 ms of Lua per call, against 19.2 ms for the fast
+                # path.
+                #
+                # A request that names a catalog page wants the catalog, so
+                # only a request that names **no** catalog argument at all
+                # is switched to the fast path.
+                if not ({"catalogPage", "catalogPageSize"} & set(args)):
+                    args["noCatalog"] = True
+        if name == "autoengineer_inventory":
+            # The inventory and logistics pages are bounded on both sides.
+            # A page outside the range is refused here, before the request
+            # ever reaches the game, so a bad page can never turn into an
+            # unbounded scan.
+            for key, maximum in (("machinePage", 10000),
+                                 ("logisticsPage", 10000)):
+                page = args.get(key, 1)
+                if type(page) is not int or not 1 <= page <= maximum:
+                    raise ValueError(f"Invalid {key}")
+            for key, maximum in (("machinePageSize", 64),
+                                 ("logisticsPageSize", 64)):
+                size = args.get(key, 16)
+                if type(size) is not int or not 1 <= size <= maximum:
+                    raise ValueError(f"Invalid {key}")
         self.policy.authorize(name)
         if name in {"walk_to_position", "autoengineer_operation"}:
             permit, self._permit = self._permit, None

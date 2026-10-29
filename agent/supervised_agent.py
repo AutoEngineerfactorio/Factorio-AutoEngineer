@@ -19,10 +19,23 @@ from movement_proposals import movement_choices, proposal_messages, resolve_choi
 from movement_watchdog import monitored_walk
 from navigation_objective import load_objective
 from resource_discovery import ResourceDiscovery
+from runtime_settings import model_endpoint, model_name, request_timeout
 from session_safety import ConsoleControl, SafetySession, StopRequested, daemon_call
+from ups_inference import guarded_urlopen
 from verified_operations import load_operation, run_operation
 
-API = get_settings()["llm_api_url"]
+
+def api_base():
+    """Return the model endpoint at the moment of the call.
+
+    The endpoint used to be a module-level constant, which froze it when
+    the module was first imported: a Settings change could never reach
+    it. It is a function now, so the next request uses the configured
+    endpoint.
+    """
+    return model_endpoint()
+
+
 MAX_ACTIONS = 3
 MAX_WALK = 5.0
 
@@ -69,20 +82,20 @@ def ask_ai(observation, history):
             "reason": "No untried short waypoints remain",
         }
     payload = {
-        "model": get_settings()["llm_model"],
+        "model": model_name() or get_settings()["llm_model"],
         "temperature": 0.2,
         "max_tokens": 120,
         "messages": proposal_messages(observation, history, choices),
     }
 
     req = urllib.request.Request(
-        API + "/chat/completions",
+        api_base() + "/chat/completions",
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
 
-    with urllib.request.urlopen(req, timeout=120) as res:
+    with guarded_urlopen(req, timeout=request_timeout()) as res:
         content = json.load(res)["choices"][0]["message"]["content"]
 
     content = content.strip()

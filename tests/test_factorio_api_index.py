@@ -80,6 +80,85 @@ class Factorio2123ApiLookup(unittest.TestCase):
         names = {p["name"] for p in capture["parameters"]}
         self.assertIn("hide_health_bars", names)
 
+    def test_a_runtime_attribute_resolves(self):
+        """A runtime class member must resolve.
+
+        The 2.1.23 archive keeps a runtime class's readable members under
+        ``attributes`` and a prototype class's under ``properties``. A
+        lookup that only searched ``properties`` reported every runtime
+        attribute as missing, which made a documented member look
+        unverified.
+        """
+        prop = api.find_property("LuaEntityPrototype", "module_inventory_size")
+        self.assertEqual(prop["name"], "module_inventory_size")
+        self.assertEqual(prop["read_type"], "uint32")
+
+    def test_a_prototype_property_still_resolves(self):
+        """A data-stage prototype property must keep resolving.
+
+        The prototype (data stage) document keeps its classes under
+        ``prototypes`` and their members under ``properties``, so the
+        prototype-stage lookup must not be broken by the runtime fix.
+        """
+        prop = api.find_property("EntityPrototype", "build_grid_size",
+                                 stage="prototype")
+        self.assertEqual(prop["name"], "build_grid_size")
+
+    def test_the_data_stage_crafting_speed_resolves(self):
+        """The data stage declares the machine crafting speed.
+
+        The data-stage ``CraftingMachinePrototype`` declares the base
+        ``crafting_speed`` and the ``module_slots`` count. These are the
+        documented meaning of the values the runtime method
+        ``get_crafting_speed`` and the attribute ``module_inventory_size``
+        report at normal quality.
+        """
+        speed = api.find_property("CraftingMachinePrototype", "crafting_speed",
+                                  stage="prototype")
+        self.assertEqual(speed["name"], "crafting_speed")
+        self.assertEqual(speed["type"], "double")
+        self.assertFalse(speed["optional"])
+        slots = api.find_property("CraftingMachinePrototype", "module_slots",
+                                  stage="prototype")
+        self.assertEqual(slots["name"], "module_slots")
+        self.assertTrue(slots["optional"])
+        # The slot count defaults to zero, so a machine without modules
+        # legitimately has no slots.
+        self.assertEqual(slots["default"]["value"], 0)
+
+    def test_a_prototype_stage_class_resolves(self):
+        """A data-stage class must resolve from the prototype document."""
+        entry = api.find_class("EntityPrototype", stage="prototype")
+        self.assertEqual(entry["name"], "EntityPrototype")
+
+    def test_the_declared_machine_accessors_resolve(self):
+        """The accessors the machine collection uses must all resolve."""
+        for name in ("module_inventory_size",
+                     "crafting_speed_quality_multiplier",
+                     "quality_affects_module_slots",
+                     "module_slots_quality_bonus"):
+            with self.subTest(name=name):
+                found = api.find_property("LuaEntityPrototype", name)
+                self.assertEqual(found["name"], name)
+        self.assertEqual(
+            api.method_signature("LuaEntityPrototype", "get_crafting_speed"),
+            "LuaEntityPrototype.get_crafting_speed(quality?)")
+        self.assertEqual(
+            api.method_signature("LuaEntityPrototype", "get_inventory_size"),
+            "LuaEntityPrototype.get_inventory_size(index, quality?)")
+
+    def test_an_absent_runtime_attribute_fails_closed(self):
+        """A member the archive does not declare must still be unknown.
+
+        The fix must not turn the lookup into a permissive one: the plain
+        ``crafting_speed`` and ``module_slots`` names are not declared by
+        2.1.23 and must stay unverified.
+        """
+        for name in ("crafting_speed", "module_slots", "fluid_boxes"):
+            with self.subTest(name=name):
+                with self.assertRaises(api.UnknownApiError):
+                    api.find_property("LuaEntityPrototype", name)
+
 
 if __name__ == "__main__":
     unittest.main()

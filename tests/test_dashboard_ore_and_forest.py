@@ -19,7 +19,7 @@ from dashboard_map_layers import (  # noqa: E402
     resource_patch_groups,
     resource_patch_rectangles,
 )
-from dashboard_nature_layers import TREE_MIN_MARKER_PIXELS  # noqa: E402
+from dashboard_nature_layers import TREE_CANOPY_TILES  # noqa: E402
 
 
 def ore(x, y, name="iron-ore", **extra):
@@ -136,12 +136,14 @@ class ResourcePatchRectangleTests(unittest.TestCase):
 
 class ForestGlyphTests(unittest.TestCase):
     def test_a_tree_keeps_a_legible_minimum_glyph(self):
-        self.assertGreater(TREE_MIN_MARKER_PIXELS, 1.0)
+        # The floor is expressed in world tiles, so it is a zoom-independent
+        # canopy size rather than a fixed screen-pixel count.
+        self.assertGreater(TREE_CANOPY_TILES, 0.5)
 
     def test_the_minimum_is_a_display_size_not_a_world_size(self):
-        # The minimum is in screen pixels; it never scales the observed
-        # position or invents a tree.
-        self.assertLess(TREE_MIN_MARKER_PIXELS, 10.0)
+        # The floor is small enough that one tree still reads as one tree:
+        # a canopy radius of half a tile is a glyph one tile across.
+        self.assertLess(TREE_CANOPY_TILES, 1.0)
 
 
 if __name__ == "__main__":

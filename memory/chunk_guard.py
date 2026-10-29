@@ -27,10 +27,15 @@ from code_quality_gate import (
 )
 
 MAX_FILES = 2  # Standard/local agent default
-MAX_CHANGED_LINES = 200
-MINIMAX_MAX_FILES = 3
-MINIMAX_MAX_CHANGED_LINES = 400
-PROFILES = ("standard", "minimax")
+MAX_CHANGED_LINES = 1000
+MINIMAX_MAX_FILES = 5
+MINIMAX_MAX_CHANGED_LINES = 2000
+SENSITIVE_MAX_CHANGED_LINES = 500
+CONSOLIDATION_MAX_FILES = 10
+CONSOLIDATION_MAX_CHANGED_LINES = 10000
+MAX_DELETED_FRACTION = 0.40  # Fail closed on broad rewrites of existing files.
+MAX_REMOVED_LINES = 300  # Larger deletions require smaller reviewed chunks.
+PROFILES = ("standard", "minimax", "consolidation")
 MAX_FILE_BYTES = 250_000
 SAFE_PATH = re.compile(r"^[a-zA-Z0-9_./-]{1,200}$")
 TEST_NAME = re.compile(r"^test_[a-z0-9_]+\.py$")
@@ -124,8 +129,12 @@ def sensitive_chunk_file(name: str) -> bool:
 def chunk_limits(names: list[str], profile: str) -> tuple[int, int]:
     if profile not in PROFILES:
         raise ChunkError(f"Unknown chunk profile {profile!r}")
+    if profile == "consolidation" and not any(sensitive_chunk_file(n) for n in names):
+        return CONSOLIDATION_MAX_FILES, CONSOLIDATION_MAX_CHANGED_LINES
     if profile == "minimax" and not any(sensitive_chunk_file(n) for n in names):
         return MINIMAX_MAX_FILES, MINIMAX_MAX_CHANGED_LINES
+    if any(sensitive_chunk_file(n) for n in names):
+        return MAX_FILES, SENSITIVE_MAX_CHANGED_LINES
     return MAX_FILES, MAX_CHANGED_LINES
 
 
@@ -189,6 +198,15 @@ def measure_chunk(root: Path, session: str) -> tuple[list[str], int, list[str], 
             raise ChunkError(f"Planned file was deleted: {name}; reconcile manually")
         after = p.read_text(encoding="utf-8")
         diff = diff_line_count(before, after)
+        removed = sum(a1 - a0 for tag, a0, a1, _, _ in
+                      difflib.SequenceMatcher(None, before.splitlines(),
+                                             after.splitlines(), autojunk=False).get_opcodes()
+                      if tag != "equal")
+        if (m.get("profile") == "minimax" and rec["existed"]
+                and not sensitive_chunk_file(name) and removed > 0
+                and (removed > MAX_REMOVED_LINES or
+                     removed > MAX_DELETED_FRACTION * max(1, len(before.splitlines())))):
+            raise ChunkError(f"Destructive rewrite blocked for {name}: {removed} removed lines")
         total += diff
         if diff:
             changed.append(name)

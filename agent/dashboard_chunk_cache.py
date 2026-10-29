@@ -41,15 +41,43 @@ __all__ = [
 ]
 
 
+#: The default number of chunks the cache holds.
+DEFAULT_MAX_CHUNKS = 64
+
+#: The default lifetime of one cached chunk, in seconds.
+DEFAULT_MAX_AGE_SECONDS = 300.0
+
+
+def _configured_cache_limits() -> tuple[int, float]:
+    """Return the chunk count and the chunk lifetime from the settings.
+
+    A missing or unusable setting falls back to the protective default,
+    so the cache can never become unbounded because of a setting.
+    """
+    try:
+        from cache_context import limits
+
+        entries, ttl = limits()
+    except Exception:
+        return DEFAULT_MAX_CHUNKS, DEFAULT_MAX_AGE_SECONDS
+    return max(1, entries), float(ttl)
+
+
 class ChunkCache:
     """Bounded, surface-scoped cache of observed map chunks."""
 
     def __init__(
         self,
-        max_chunks: int = 64,
-        max_age_seconds: float = 300.0,
+        max_chunks: int | None = None,
+        max_age_seconds: float | None = None,
         max_entities_per_chunk: int = 4096,
     ) -> None:
+        if max_chunks is None or max_age_seconds is None:
+            configured_entries, configured_ttl = _configured_cache_limits()
+            if max_chunks is None:
+                max_chunks = configured_entries
+            if max_age_seconds is None:
+                max_age_seconds = configured_ttl
         if type(max_chunks) is not int or max_chunks < 1:
             raise ValueError("Chunk budget must be a positive integer")
         if not math.isfinite(max_age_seconds) or max_age_seconds <= 0:

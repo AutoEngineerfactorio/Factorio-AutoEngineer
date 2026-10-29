@@ -3,6 +3,7 @@
 import math
 import time
 import tkinter as tk
+from concurrent.futures import ProcessPoolExecutor
 from tkinter import ttk
 
 from dashboard_chunk_grid import CHUNK_TILES
@@ -36,17 +37,17 @@ from dashboard_inventory import (
 from dashboard_map_layers import (
     resource_patch_color,
     resource_patch_rectangles,
+    resource_patch_rectangles_by_observed_chunk,
     shade_fog_color,
 )
 from dashboard_nature_layers import (
     RUNTIME_DEFAULT_CHART_COLOR,
-    TREE_MIN_MARKER_PIXELS,
     cliff_shape,
     nature_fingerprint,
     nature_shapes,
     parse_map_color,
     rock_shape,
-    tree_shape,
+    tree_canopy_tiles,
 )
 from factorio_theme import INSET
 
@@ -244,16 +245,27 @@ def merged_terrain(data):
     if origins:
         min_x = min(origin[0] for origin in origins) * CHUNK_TILES
         min_y = min(origin[1] for origin in origins) * CHUNK_TILES
-        max_x = max(origin[0] for origin in origins) * CHUNK_TILES + CHUNK_TILES
-        max_y = max(origin[1] for origin in origins) * CHUNK_TILES + CHUNK_TILES
     else:
-        min_x = min_y = max_x = max_y = 0
+        min_x = min_y = 0
     terrain = dict(data.get("terrain") or {})
     terrain["entities"] = entities
     terrain["rasters"] = merged.get("rasters") or []
+    terrain["observed_chunks"] = [
+        {"x": origin[0], "y": origin[1]} for origin in origins
+    ]
     terrain["origin"] = {"x": min_x, "y": min_y}
-    terrain["width"] = max_x - min_x
-    terrain["height"] = max_y - min_y
+    # The reported window is the bounding box of the observed chunks, so a
+    # consumer that only reads width/height sees the whole merged map
+    # instead of a single-chunk window. The observed-chunk set remains the
+    # authoritative list of what was actually observed.
+    if origins:
+        max_x = max(origin[0] for origin in origins) * CHUNK_TILES
+        max_y = max(origin[1] for origin in origins) * CHUNK_TILES
+        terrain["width"] = max_x - min_x + CHUNK_TILES
+        terrain["height"] = max_y - min_y + CHUNK_TILES
+    else:
+        terrain["width"] = 0
+        terrain["height"] = 0
     terrain["partial"] = bool(merged.get("partial"))
     return terrain
 
@@ -262,6 +274,12 @@ class LiveView(ttk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
         self.last: dict | None = None
+        self._map_draw_at = 0.0
+        self._map_draw_pending = False
+        self._raster_executor = None
+        self._raster_future = None
+        self._raster_requested_key = None
+        self._raster_ready_key = None
         self.received: float | None = None
         self.available = False
         self.offset = {"x": 0, "y": 0}
@@ -754,11 +772,47 @@ class LiveView(ttk.Frame):
                 + (" · partial" if partial else "")
                 + ("" if available else " — unavailable"),
             )
+        # Observer frames arrive even when only the tick/telemetry changes.
+        # Comparing the observed visual payload is cheaper than rebuilding
+        # thousands of Tk canvas objects and a full-screen pixel raster.
+        old = self.last
+        visual_fields = ("surface", "position", "terrain", "visited",
+                         "failed", "resources", "objective", "proposal")
+        redraw = old is None or any(old.get(k) != data.get(k) for k in visual_fields)
+        # Map cache counters, request counts and observed ticks are metadata,
+        # not pixels. Ignore them while retaining visibility/fog status changes.
+        if not redraw and old is not None:
+            map_fields = ("surface", "origins", "tiles", "rasters", "entities",
+                          "partial", "statuses")
+            before, after = old.get("map") or {}, data.get("map") or {}
+            redraw = any(before.get(k) != after.get(k) for k in map_fields)
         self.last = data
         self.received = time.monotonic()
         self.available = True
         self.inventory()
-        self.draw()
+        if redraw:
+            self.schedule_map_redraw()
+
+    def schedule_map_redraw(self):
+        """Bound expensive complete canvas renders to one per 1.5 seconds.
+
+        Retain the most recent observation: a pending draw always reads
+        self.last instead of an obsolete queued frame.
+        """
+        now = time.monotonic()
+        delay = max(0, 1.5 - (now - self._map_draw_at))
+        if delay == 0:
+            self._map_draw_at = now
+            self.draw()
+        elif not self._map_draw_pending:
+            self._map_draw_pending = True
+            self.after(max(1, int(delay * 1000)), self.flush_map_redraw)
+
+    def flush_map_redraw(self):
+        self._map_draw_pending = False
+        self._map_draw_at = time.monotonic()
+        if self.last is not None:
+            self.draw()
 
     def _stale_suffix(self):
         """Suffix that marks the inventory as no longer a live reading."""
@@ -806,13 +860,50 @@ class LiveView(ttk.Frame):
             height,
             radius,
         )
-        if getattr(self, "raster_key", None) != key:
-            pixels = raster_pixels(terrain, center, width, height, radius)
+        if not hasattr(self, "_raster_executor"):
+            # Lightweight recording-canvas tests do not create a Tk worker.
+            if getattr(self, "raster_key", None) != key:
+                pixels = raster_pixels(terrain, center, width, height, radius)
+                self.map_image = tk.PhotoImage(
+                    data=f"P6 {width} {height} 255\n".encode() + pixels, format="PPM"
+                )
+                self.raster_key = key
+        elif getattr(self, "raster_key", None) != key:
+            if self._raster_future is None and self._raster_requested_key != key:
+                if self._raster_executor is None:
+                    self._raster_executor = ProcessPoolExecutor(max_workers=1)
+                # Raster conversion happens in a separate CPU process; no Tk
+                # operations or game commands run outside the UI thread.
+                self._raster_future = self._raster_executor.submit(
+                    raster_pixels, terrain, dict(center), width, height, radius
+                )
+                self._raster_requested_key = key
+                self.after(50, self._collect_raster)
+        if getattr(self, "map_image", None) is not None:
+            self.canvas.create_image(0, 0, anchor="nw", image=self.map_image)
+
+    def _collect_raster(self):
+        future = self._raster_future
+        if future is None:
+            return
+        if not future.done():
+            self.after(50, self._collect_raster)
+            return
+        self._raster_future = None
+        try:
+            pixels = future.result()
+            key = self._raster_requested_key
+            if key is None:
+                return
+            width, height = key[-3], key[-2]
             self.map_image = tk.PhotoImage(
                 data=f"P6 {width} {height} 255\n".encode() + pixels, format="PPM"
             )
             self.raster_key = key
-        self.canvas.create_image(0, 0, anchor="nw", image=self.map_image)
+        except Exception:
+            # Keep the previous image; a failed worker cannot crash Tk.
+            self._raster_requested_key = None
+        self.schedule_map_redraw()
 
     def draw_resource_patches(self, terrain, center, width, height, radius):
         """Paint observed resource deposits as continuous filled patches.
@@ -820,6 +911,14 @@ class LiveView(ttk.Frame):
         Only deposits the observer actually reported are drawn. Each patch
         is a filled rectangle with no per-deposit border, so an ore field
         reads as a continuous coloured area like the in-game map.
+
+        A resource node belongs to a chunk by its observed *position*, the
+        same way the nature layer assigns natural objects to a chunk. Its
+        observed footprint may cross a chunk seam, and that seam-crossing
+        part of the footprint is kept when the neighbouring chunk was also
+        observed, and dropped when it was not. Unexplored space therefore
+        never shows an ore tile, and an observed node is never painted
+        twice.
         """
         entities = terrain.get("entities", [])
         if not entities:
@@ -833,7 +932,15 @@ class LiveView(ttk.Frame):
                 width=terrain.get("width", 256),
                 height=terrain.get("height", 256),
             )
-        for name, rectangles in resource_patch_rectangles(entities, window).items():
+        observed_chunks = terrain.get("observed_chunks")
+        rectangles_by_name = (
+            resource_patch_rectangles(entities, window)
+            if not observed_chunks
+            else resource_patch_rectangles_by_observed_chunk(
+                entities, observed_chunks, CHUNK_TILES
+            )
+        )
+        for name, rectangles in rectangles_by_name.items():
             color = resource_patch_color(name)
             for x0, y0, x1, y1 in rectangles:
                 left, top = project(
@@ -881,7 +988,31 @@ class LiveView(ttk.Frame):
                 width=terrain.get("width", 256),
                 height=terrain.get("height", 256),
             )
-        shapes = self._nature_shape_cache(entities, window)
+        observed_chunks = terrain.get("observed_chunks")
+        shapes = (
+            self._nature_shape_cache(entities, window)
+            if not observed_chunks
+            else []
+        )
+        if observed_chunks:
+            # The previous path scanned all entities for every chunk (up to
+            # 64 full scans per redraw). Partition once by observed position.
+            grouped = {}
+            for entity in entities:
+                if entity.get("kind") != "nature":
+                    continue
+                x, y = entity.get("x"), entity.get("y")
+                if type(x) in (int, float) and type(y) in (int, float):
+                    key = (math.floor(x / CHUNK_TILES), math.floor(y / CHUNK_TILES))
+                    grouped.setdefault(key, []).append(entity)
+            for chunk in observed_chunks:
+                cx, cy = chunk["x"], chunk["y"]
+                subset = grouped.get((cx, cy), [])
+                if subset:
+                    shapes.extend(nature_shapes(subset, dict(
+                        x=cx * CHUNK_TILES, y=cy * CHUNK_TILES,
+                        width=CHUNK_TILES, height=CHUNK_TILES,
+                    )))
         scale = map_scale(width, height, radius)
         for shape in shapes:
             x, y = project({"x": shape.x, "y": shape.y}, center, width, height, radius)
@@ -891,16 +1022,14 @@ class LiveView(ttk.Frame):
                 # or inferred gameplay footprint, so neighboring crowns blend
                 # into the wooded pattern seen on the game's chart.
                 #
-                # The glyph keeps a minimum pixel size so that a densely
-                # wooded region still reads as forest cover at a wide map
-                # zoom, where one tile is only a few pixels across. The
-                # minimum never adds a tree: only the observed tree at its
-                # observed position is drawn, and the glyph is the same dark
-                # map green the game uses for a charted tree.
-                radius_px = max(
-                    TREE_MIN_MARKER_PIXELS,
-                    tree_shape(shape) * scale * 0.85,
-                )
+                # The canopy radius is derived from the tile grid, not from a
+                # fixed pixel count, so it scales with the map zoom: at a wide
+                # zoom a densely wooded region reads as continuous canopy, and
+                # at a close zoom each tree keeps its own size instead of
+                # ballooning. The floor never adds a tree: only the observed
+                # tree at its observed position is drawn, and the glyph is the
+                # same dark map green the game uses for a charted tree.
+                radius_px = tree_canopy_tiles(shape) * scale
                 # Vanilla chart trees are dark-green marks, not their bright
                 # sprite-tint palette. Use the color measured from the live
                 # Factorio minimap; retain prototype colors for modded trees.

@@ -316,6 +316,94 @@ def merged_patch_rectangles(tiles):
     return [tuple(r) for r in result]
 
 
+def observed_chunk_tile_set(observed_chunks, chunk_tiles):
+    """Return the set of world tiles covered by the observed chunks.
+
+    The observer reports one aligned chunk grid, so a chunk is named by its
+    chunk index and covers ``chunk_tiles`` world tiles in each direction.
+    The returned set is the union of those tiles, which is the exact region
+    the dashboard is allowed to paint: a tile outside it belongs to a chunk
+    that was never observed and must stay unexplored.
+    """
+    tiles: set[tuple[int, int]] = set()
+    for chunk in observed_chunks or []:
+        if not isinstance(chunk, dict):
+            continue
+        chunk_x = chunk.get("x")
+        chunk_y = chunk.get("y")
+        if not isinstance(chunk_x, int) or not isinstance(chunk_y, int):
+            continue
+        base_x = chunk_x * chunk_tiles
+        base_y = chunk_y * chunk_tiles
+        for ty in range(base_y, base_y + chunk_tiles):
+            for tx in range(base_x, base_x + chunk_tiles):
+                tiles.add((tx, ty))
+    return tiles
+
+
+def resource_patch_rectangles_by_observed_chunk(
+    entities, observed_chunks, chunk_tiles
+):
+    """Return filled patch rectangles for the observed chunks only.
+
+    A resource entity belongs to a chunk by its observed **position**, the
+    same way the nature layer assigns natural objects to a chunk. Its
+    observed footprint may cross a chunk seam, and that is legitimate: the
+    observer reported the node's real bounding box.
+
+    The rule this function enforces is therefore:
+
+    * An entity whose position lies in an observed chunk contributes its
+      full observed footprint.
+    * A tile of that footprint that lies in a *neighbouring observed* chunk
+      is kept, because the neighbour was observed and the tile is part of
+      the observed node.
+    * A tile that lies in a neighbouring *unobserved* chunk is dropped, so
+      unexplored space never shows an ore tile.
+
+    Each entity is visited exactly once, through the chunk its position
+    falls in, so a seam-crossing node is never painted twice.
+    """
+    allowed = observed_chunk_tile_set(observed_chunks, chunk_tiles)
+    if not allowed:
+        return {}
+    observed_keys = {
+        (chunk["x"], chunk["y"])
+        for chunk in observed_chunks or []
+        if isinstance(chunk, dict)
+        and isinstance(chunk.get("x"), int)
+        and isinstance(chunk.get("y"), int)
+    }
+    patches: dict[str, set[tuple[int, int]]] = {}
+    for entity in entities:
+        if not isinstance(entity, dict) or entity.get("kind") != "resource":
+            continue
+        name = entity.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        x = _number(entity, "x")
+        y = _number(entity, "y")
+        if x is None or y is None:
+            continue
+        # Membership is decided by the observed position, not by the tiles
+        # the footprint covers, so a seam-crossing node is handled once.
+        owner = (math.floor(x / chunk_tiles), math.floor(y / chunk_tiles))
+        if owner not in observed_keys:
+            continue
+        cells = patches.setdefault(name, set())
+        for tile in occupied_tiles(entity):
+            if tile in allowed:
+                cells.add(tile)
+    result: dict[str, list[tuple[int, int, int, int]]] = {}
+    for name, observed in patches.items():
+        rectangles: list[tuple[int, int, int, int]] = []
+        for group in resource_patch_groups(observed):
+            rectangles.extend(merged_patch_rectangles(fill_observed_field(group)))
+        if rectangles:
+            result[name] = rectangles
+    return result
+
+
 def resource_patch_rectangles(entities, origin=None):
     """Return filled patch rectangles per observed resource name.
 

@@ -1,3 +1,4 @@
+using System;
 using FactorioMCP.Rcon;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -9,7 +10,12 @@ namespace FactorioMCP.Services;
 /// Hosted service that connects and authenticates the RCON client on application startup.
 /// Reads connection settings from environment variables.
 /// Retries connection with exponential backoff if the server is not yet available.
-/// After connecting, initializes game-level listeners (e.g. chat message capture).
+///
+/// Connecting never sends a Lua console command. Factorio 2.1.23 holds the first
+/// raw Lua console command of a fresh server and asks the operator to repeat it,
+/// because running Lua from the console disables achievements. The backend never
+/// answers that confirmation on the operator's behalf; all observations travel
+/// over registered mod commands.
 /// </summary>
 internal sealed class RconConnectionService(
     RconClient rcon,
@@ -19,15 +25,7 @@ internal sealed class RconConnectionService(
 {
     private const int MaxStartupAttempts = 5;
     private static readonly TimeSpan InitialBackoff = TimeSpan.FromSeconds(2);
-    // Factorio 2.1.23 gates the FIRST console command of a fresh server: the
-    // command is held pending and only an identical repeat executes it. A pending
-    // command returns an empty body, so the first real observation would be lost.
-    //
-    // The gate is cleared by repeating the same command, so it is pre-cleared here
-    // with a harmless read-only probe. The probe is sent twice on purpose: the first
-    // send is consumed by the gate, the second executes it. No gameplay command is
-    // ever repeated, so no write can be applied twice.
-    private const string ConsoleGateProbe = "rcon.print('autoengineer-console-gate-probe')";
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         var host = configuration["FACTORIO_RCON_HOST"] ?? "127.0.0.1";
@@ -42,7 +40,12 @@ internal sealed class RconConnectionService(
                 await rcon.ConnectAndAuthenticateAsync(host, port, password, cancellationToken);
                 logger.LogInformation("RCON connected to {Host}:{Port}", host, port);
 
-                await ClearConsoleCommandGateAsync(cancellationToken);
+                // No startup console probe. Factorio 2.1.23 holds the first raw
+                // Lua console command of a fresh server and asks the operator to
+                // repeat it to confirm that achievements may be disabled. The
+                // backend never answers that confirmation on the operator's
+                // behalf: all observations travel over registered mod commands,
+                // which are not Lua console commands.
                 // Restricted profile does not install chat or other unsolicited listeners.
                 return;
             }
@@ -59,7 +62,6 @@ internal sealed class RconConnectionService(
 
         // Final attempt — let the exception propagate
         await rcon.ConnectAndAuthenticateAsync(host, port, password, cancellationToken);
-        await ClearConsoleCommandGateAsync(cancellationToken);
         // No unsolicited game listeners in the restricted profile.
     }
 
@@ -75,28 +77,6 @@ internal sealed class RconConnectionService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Failed to initialize chat listener — chat tools may not work until manually re-initialized");
-        }
-    }
-
-    /// <summary>
-    /// Pre-clear the Factorio 2.1.23 console-command confirmation gate with a
-    /// read-only probe sent twice. The probe observes nothing and changes nothing.
-    /// A failure here is logged and ignored: later commands may still be gated,
-    /// but the restriction is never weakened and no gameplay action is retried.
-    /// </summary>
-    private async Task ClearConsoleCommandGateAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            await rcon.ExecuteLuaAsync(ConsoleGateProbe, cancellationToken);
-            var confirmation = await rcon.ExecuteLuaAsync(ConsoleGateProbe, cancellationToken);
-            logger.LogInformation(
-                "Console command gate pre-cleared; probe confirmation: {Confirmation}",
-                confirmation.Trim());
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Console command gate probe failed; continuing without it");
         }
     }
 }

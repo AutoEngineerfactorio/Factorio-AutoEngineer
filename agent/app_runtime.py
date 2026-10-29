@@ -16,7 +16,7 @@ def data_root():
 
 
 def component_command(name):
-    if name not in ("dashboard", "dashboard_observer", "supervised_agent", "backend_check"):
+    if name not in ("dashboard", "dashboard_observer", "lightweight_telemetry_observer", "supervised_agent", "backend_check"):
         raise ValueError("Unknown application component")
     if getattr(sys, "frozen", False):
         return [str(Path(sys.executable).with_name("AutoEngineerWorker.exe")), "--component", name]

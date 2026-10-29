@@ -76,8 +76,10 @@ class MovementProposalTests(unittest.TestCase):
                 ).encode()
             )
 
-        with patch.object(agent.urllib.request, "urlopen", side_effect=response):
+        with (patch("ups_inference.UPSAdmission.admit") as admission,
+              patch.object(agent.urllib.request, "urlopen", side_effect=response)):
             proposal = agent.ask_ai(self.observation(), [])
+            admission.assert_called_once_with()
         agent.validate(proposal, {"x": 0, "y": 0})
         sent = json.loads(captured[0]["messages"][-1]["content"])
         self.assertNotIn("resources", sent)

@@ -62,14 +62,16 @@ class ChunkGuardTests(unittest.TestCase):
 
     def test_profiles_and_sensitive_limits(self):
         ordinary = ["agent/blueprint_encoder.py", "tests/test_blueprint_encoder.py"]
-        self.assertEqual(chunk_limits(ordinary, "standard"), (2, 200))
-        self.assertEqual(chunk_limits(ordinary, "minimax"), (3, 400))
+        self.assertEqual(chunk_limits(ordinary, "standard"), (2, 1000))
+        self.assertEqual(chunk_limits(ordinary, "minimax"), (5, 2000))
+        self.assertEqual(chunk_limits(ordinary, "consolidation"), (10, 10000))
+        self.assertEqual(chunk_limits(ordinary + ["agent/mode_policy.py"], "consolidation"), (2, 500))
         for sensitive in ("backend-safety/Tools/Adapter.cs", "agent/mode_policy.py",
                           "agent/dispatch_boundary.py", "agent/rcon_client.py",
                           "memory/chunk_guard.py", ".roo/rules/12-minimax-provider.md",
                           "docs/ZOO_CODE_TASK_PROTOCOL.md",
                           "factorio-mod/autoengineer-input_2.1.23/control.lua"):
-            self.assertEqual(chunk_limits(ordinary + [sensitive], "minimax"), (2, 200))
+            self.assertEqual(chunk_limits(ordinary + [sensitive], "minimax"), (2, 500))
         with self.assertRaises(ChunkError):
             chunk_limits(ordinary, "untrusted-profile")
 
@@ -81,7 +83,7 @@ class ChunkGuardTests(unittest.TestCase):
                               profile="minimax")
         manifest = json.loads((self.root / ".local/chunk-checkpoints" / session /
                                "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["limits"], {"max_files": 3, "max_changed_lines": 400})
+        self.assertEqual(manifest["limits"], {"max_files": 5, "max_changed_lines": 2000})
         self.assertEqual(manifest["profile"], "minimax")
         self.write(names[0], "a = 1\n" * 200)
         self.write(names[1], "b = 2\n" * 199)
@@ -89,19 +91,29 @@ class ChunkGuardTests(unittest.TestCase):
         with patch("chunk_guard.run_checks", return_value=[("Tests", True, "ok")]):
             ok, report = verify_chunk(self.root, session, test_stage="offline")
         self.assertTrue(ok, report)
-        self.assertIn("changed=3/3 | lines=400/400", report)
+        self.assertIn("changed=3/5 | lines=400/2000", report)
         self.assertFalse(any(lock_path(self.root, n).exists() for n in names))
 
-    def test_minimax_401_lines_blocked_without_running_checks(self):
+    def test_minimax_1001_lines_blocked_without_running_checks(self):
         session = begin_chunk(self.root, ["agent/a.py"], "Oversized MiniMax batch",
                               profile="minimax")
-        self.write("agent/a.py", "a = 1\n" * 401)
+        self.write("agent/a.py", "a = 1\n" * 2001)
         with patch("chunk_guard.run_checks") as checks:
             ok, report = verify_chunk(self.root, session, test_stage="offline")
         self.assertFalse(ok)
-        self.assertIn("exceeds 400", report)
+        self.assertIn("exceeds 2000", report)
         checks.assert_not_called()
         abort_chunk(self.root, session, "Oversized chunk retained for manual split")
+
+    def test_minimax_blocks_destructive_rewrite(self):
+        name = "agent/qt_theme.py"
+        self.write(name, "x = 1\n" * 100)
+        session = begin_chunk(self.root, [name], "Safeguard against destructive rewrites",
+                              profile="minimax")
+        self.write(name, "x = 2\n" * 10)
+        with self.assertRaisesRegex(ChunkError, "Destructive rewrite blocked"):
+            measure_chunk(self.root, session)
+        abort_chunk(self.root, session, "Destructive edit refused for inspection")
 
     def test_minimax_sensitive_changes_stay_at_standard_budget(self):
         with self.assertRaises(ChunkError):
@@ -112,11 +124,11 @@ class ChunkGuardTests(unittest.TestCase):
         name = "agent/mode_policy.py"
         session = begin_chunk(self.root, [name], "Sensitive MiniMax change",
                               profile="minimax")
-        self.write(name, "a = 1\n" * 201)
+        self.write(name, "a = 1\n" * 501)
         with patch("chunk_guard.run_checks") as checks:
             ok, report = verify_chunk(self.root, session, test_stage="offline")
         self.assertFalse(ok)
-        self.assertIn("exceeds 200", report)
+        self.assertIn("exceeds 500", report)
         checks.assert_not_called()
         abort_chunk(self.root, session, "Sensitive chunk capped as standard")
 
@@ -144,22 +156,22 @@ class ChunkGuardTests(unittest.TestCase):
     def test_oversized_edit_blocks_verification(self):
         self.write("agent/a.py", "x = 1\n")
         session = begin_chunk(self.root, ["agent/a.py"], "Incremental Python change")
-        self.write("agent/a.py", "\n".join("x = 1" for _ in range(230)))
+        self.write("agent/a.py", "\n".join("x = 1" for _ in range(1030)))
         with patch("chunk_guard.run_checks") as fn:
             ok, out = verify_chunk(self.root, session, test_stage="offline")
         self.assertFalse(ok)
-        self.assertIn("exceeds 200", out)
+        self.assertIn("exceeds 1000", out)
         fn.assert_not_called()
         abort_chunk(self.root, session, "Large edit rejected and source left intact")
 
     def test_exactly_200_changed_lines_allowed_with_verification(self):
         self.write("agent/a.py", "x = 1\n")
         session = begin_chunk(self.root, ["agent/a.py"], "Verified upper boundary")
-        self.write("agent/a.py", "x = 1\n" + "x = 2\n" * 200)
+        self.write("agent/a.py", "x = 1\n" + "x = 2\n" * 1000)
         with patch("chunk_guard.run_checks", return_value=[("Tests", True, "passed")]):
             ok, out = verify_chunk(self.root, session, test_stage="offline")
         self.assertTrue(ok, out)
-        self.assertIn("lines=200/200", out)
+        self.assertIn("lines=1000/1000", out)
         self.assertFalse(lock_path(self.root, "agent/a.py").exists())
 
     def test_missing_change_cannot_be_marked_success(self):

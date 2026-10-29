@@ -37,6 +37,52 @@ commands.add_command("autoengineer-takeover",
         player.print("AutoEngineer human takeover requested.")
     end)
 
+-- Read-only observation command used by the AutoEngineer backend.
+--
+-- The backend reaches the game through this registered mod command rather
+-- than through a raw Lua console command. A registered command is not
+-- arbitrary scripting, so an observation never triggers the Factorio
+-- achievement-disabling confirmation.
+--
+-- The parameter is a fixed operation selector plus strictly numeric
+-- arguments. No client-supplied Lua is accepted and no gameplay action is
+-- possible through this command.
+local observation = require("observation")
+-- The telemetry module registers the telemetry operation.
+require("observation_telemetry")
+-- The map module registers the map operation.
+require("observation_map")
+-- The terrain module registers the terrain raster operation.
+require("observation_terrain")
+-- The overlay module registers the map overlay operation.
+require("observation_overlay")
+-- The entity layer module adds the electric, logistics, turret and station
+-- layers to the overlay observation.
+require("observation_overlay_entities")
+-- The inventory module registers the inventory operation.
+require("observation_inventory")
+-- The logistics module registers the machine, logistics, robot and
+-- transport observations.
+require("observation_logistics")
+-- The catalog module registers the recipe, research and machine operations.
+require("observation_catalog")
+require("observation_singleplayer_export")
+
+commands.add_command("autoengineer-observe",
+    "Read-only AutoEngineer observation (status, telemetry, map, recipes, research, machines).",
+    function(command)
+        local document = observation.run(command.parameter)
+        local text = helpers.table_to_json(document)
+        if command.player_index then
+            -- A player typed the command: show it to that player only.
+            local player = game.get_player(command.player_index)
+            if player then player.print(text) end
+        else
+            -- Issued over RCON: the response body carries the document.
+            rcon.print(text)
+        end
+    end)
+
 -- Register event listeners using script.on_event (2.0+)
 script.on_event("autoengineer-human-move-up", takeover)
 script.on_event("autoengineer-human-move-down", takeover)
